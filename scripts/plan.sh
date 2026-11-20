@@ -3,6 +3,17 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
+jq -e '.version == 1 and (.tools | type == "array")' manifest.json >/dev/null 2>&1 \
+  || { echo "error: manifest.json is missing, not valid JSON, or its version is not 1" >&2; exit 1; }
+seen=
+for name in $(jq -r '.tools[].name' manifest.json); do
+  [ -f "tools/$name/go.mod" ] || { echo "error: manifest.json lists '$name' but tools/$name/go.mod does not exist" >&2; exit 1; }
+  case " $seen " in
+    *" $name "*) echo "error: manifest.json lists '$name' more than once" >&2; exit 1 ;;
+  esac
+  seen="$seen $name"
+done
+
 matrix='[]'
 for mod in tools/*/go.mod; do
   [ -e "$mod" ] || continue
