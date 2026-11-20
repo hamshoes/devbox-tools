@@ -3,4 +3,5 @@ go 1.27.1
 use (
 	./tools/proj
 	./tools/scratch
+	./tools/unwrapped
 )

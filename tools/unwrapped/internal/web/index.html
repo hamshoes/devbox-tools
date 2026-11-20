@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>unwrapped</title>
+<style>
+:root {
+  --bg: #f5f6f8; --card: #fff; --fg: #1c2024; --muted: #6a7480; --line: #e2e5ea;
+  --accent: #2f6fed; --bar: #e6e9ee; --warn: #d9480f;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14171b; --card: #1d2127; --fg: #e6e9ee; --muted: #8b95a1; --line: #2c323a; --accent: #6a9bff; --bar: #2c323a; --warn: #ff8c5a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+h1 { font-size: 18px; margin: 0; }
+.host { color: var(--muted); }
+#badge { display: none; font-size: 12px; padding: 2px 8px; border-radius: 10px; background: var(--warn); color: #fff; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.card h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.big { font-size: 28px; font-weight: 600; }
+.sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.bar { height: 8px; border-radius: 4px; background: var(--bar); margin-top: 10px; overflow: hidden; }
+.bar > div { height: 100%; background: var(--accent); width: 0; }
+svg { width: 100%; height: 70px; margin-top: 8px; background: var(--bar); border-radius: 4px; display: block; }
+polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+ul { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12px; }
+li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; font-size: 12px; }
+.clients { margin-top: 12px; }
+footer { margin-top: 16px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header><h1>unwrapped</h1><span class="host" id="host"></span><span id="badge">disconnected</span></header>
+
+<div class="grid">
+  <div class="card"><h2>Running for</h2><div class="big" id="running">–</div><div class="sub" id="boot"></div></div>
+  <div class="card"><h2>Home volume</h2><div class="big" id="home-size">measuring…</div><div class="sub" id="home-meta"></div><ul id="home-top"></ul></div>
+  <div class="card"><h2>Disk</h2><div class="big" id="disk-pct">–</div><div class="sub" id="disk-sub"></div><div class="bar"><div id="disk-bar"></div></div></div>
+  <div class="card"><h2>CPU</h2><div class="big" id="cpu-pct">–</div><div class="sub" id="cpu-sub"></div>
+    <svg viewBox="0 0 300 100" preserveAspectRatio="none"><polyline id="cpu-line" points=""/></svg></div>
+  <div class="card"><h2>Memory</h2><div class="big" id="mem-pct">–</div><div class="sub" id="mem-sub"></div><div class="bar"><div id="mem-bar"></div></div></div>
+</div>
+
+<div class="card clients">
+  <h2>Clients</h2>
+  <table>
+    <thead><tr><th>tty</th><th>attached</th><th>last activity</th></tr></thead>
+    <tbody id="clients"></tbody>
+  </table>
+</div>
+
+<footer id="footer"></footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const WINDOW_MS = 300000;
+
+function bytes(n) {
+  const u = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? n : n.toFixed(n >= 100 ? 0 : 1)) + ' ' + u[i];
+}
+function dur(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  if (d) return d + 'd ' + h + 'h';
+  if (h) return h + 'h ' + m + 'm';
+  if (m) return m + 'm ' + (s % 60) + 's';
+  return s + 's';
+}
+const ago = (t, now) => dur(now - new Date(t)) + ' ago';
+const pct = n => n.toFixed(1) + '%';
+
+function render(s) {
+  const now = new Date(s.now);
+  $('host').textContent = s.hostname;
+  $('running').textContent = s.running;
+  $('boot').textContent = 'booted ' + new Date(s.boot_time).toLocaleString();
+
+  const h = s.home;
+  if (h.measuring) {
+    $('home-size').textContent = 'measuring…';
+    $('home-meta').textContent = '';
+  } else {
+    $('home-size').textContent = bytes(h.size);
+    $('home-meta').textContent = 'measured ' + ago(h.measured_at, now) + ' (took ' + h.took + ')';
+  }
+  $('home-top').replaceChildren(...h.top.map(d => {
+    const li = document.createElement('li');
+    const a = document.createElement('span'), b = document.createElement('span');
+    a.textContent = d.name; b.textContent = bytes(d.size);
+    li.append(a, b);
+    return li;
+  }));
+
+  $('disk-pct').textContent = pct(s.disk.percent);
+  $('disk-sub').textContent = bytes(s.disk.used) + ' used of ' + bytes(s.disk.total) + ', ' + bytes(s.disk.free) + ' free';
+  $('disk-bar').style.width = s.disk.percent + '%';
+
+  $('cpu-pct').textContent = pct(s.cpu.percent);
+  $('cpu-sub').textContent = s.cpu.cores + ' cores · load ' + s.cpu.load.map(l => l.toFixed(2)).join(' ');
+  $('cpu-line').setAttribute('points', s.cpu.history.map(p =>
+    (300 - (now - new Date(p.time)) / WINDOW_MS * 300).toFixed(1) + ',' + (100 - p.percent).toFixed(1)).join(' '));
+
+  $('mem-pct').textContent = pct(s.memory.percent);
+  $('mem-sub').textContent = bytes(s.memory.used) + ' used, ' + bytes(s.memory.available) + ' available of ' + bytes(s.memory.total);
+  $('mem-bar').style.width = s.memory.percent + '%';
+
+  const rows = s.clients.map(c => {
+    const tr = document.createElement('tr');
+    for (const v of [c.tty, ago(c.attached_since, now), ago(c.last_activity, now)]) {
+      const td = document.createElement('td');
+      td.textContent = v;
+      tr.append(td);
+    }
+    return tr;
+  });
+  if (!rows.length) {
+    const tr = document.createElement('tr'), td = document.createElement('td');
+    td.colSpan = 3; td.textContent = 'No clients attached';
+    tr.append(td); rows.push(tr);
+  }
+  $('clients').replaceChildren(...rows);
+
+  $('footer').textContent = 'unwrapped ' + s.version;
+}
+
+async function tick() {
+  try {
+    const r = await fetch('/api/stats', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    render(await r.json());
+    $('badge').style.display = 'none';
+  } catch (e) {
+    $('badge').style.display = 'inline-block';
+  }
+}
+tick();
+setInterval(tick, 2000);
+</script>
+</body>
+</html>
