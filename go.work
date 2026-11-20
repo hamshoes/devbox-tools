@@ -1,3 +1,6 @@
 go 1.27.1
 
-use ./tools/proj
+use (
+	./tools/proj
+	./tools/scratch
+)

@@ -1,9 +1,8 @@
 proj() {
   [[ -r $HOME/.config/devbox/env ]] && source "$HOME/.config/devbox/env"
   case "$1 $2" in
-    "scratch ls"*|"scratch clean"*|init*|--version*|"")
-      command proj "$@" ;;
-    start*|work*|scratch*)
+    start*|work*)
+      [[ " $* " == *" -h "* || " $* " == *" --help "* ]] && { command proj "$@"; return; }
       local dir
       dir=$(command proj "$@") || return
       [[ -n $dir && -d $dir ]] && cd -- "$dir" ;;
@@ -11,4 +10,3 @@ proj() {
       command proj "$@" ;;
   esac
 }
-scratch() { proj scratch "$@"; }
