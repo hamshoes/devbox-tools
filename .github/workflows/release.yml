@@ -1,0 +1,50 @@
+name: release
+on:
+  push:
+    branches: [main]
+    paths: ['tools/**', '!tools/**/*.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      any: ${{ steps.plan.outputs.any }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: plan
+        run: scripts/plan.sh >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/${{ matrix.tool }}/go.mod
+          cache: false
+      - name: vet
+        working-directory: tools/${{ matrix.tool }}
+        env: { GOWORK: 'off' }
+        run: go vet ./...
+      - name: build
+        run: scripts/build.sh "${{ matrix.tool }}" "${{ matrix.version }}"
+      - name: release
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: scripts/release.sh "${{ matrix.tool }}" "${{ matrix.version }}" "${{ matrix.prev }}"
