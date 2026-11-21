@@ -2,6 +2,8 @@
   "version": 1,
   "tools": [
     { "name": "proj",    "devbox": true, "init": "zsh" },
-    { "name": "scratch", "devbox": true, "init": "zsh" }
+    { "name": "scratch", "devbox": true, "init": "zsh" },
+    { "name": "tetherping", "devbox": true },
+    { "name": "tetherlog", "devbox": false }
   ]
 }
