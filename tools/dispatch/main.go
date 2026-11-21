@@ -51,6 +51,10 @@ func main() {
 		os.Exit(unexpose(os.Args[2:]))
 	case "ports":
 		os.Exit(ports())
+	case "notify":
+		os.Exit(notify(os.Args[2:]))
+	case "clip":
+		os.Exit(clip(os.Args[2:]))
 	case "status":
 		os.Exit(status())
 	default:
@@ -59,7 +63,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: dispatch open <url> | open-or-print <url> | expose <port> | unexpose <name|port> | ports | status | --version")
+	fmt.Fprintln(os.Stderr, "usage: dispatch open <url> | open-or-print <url> | expose <port> | unexpose <name|port> | ports | notify [-t title] [message] | clip [text] | status | --version")
 	os.Exit(exitInvalid)
 }
 

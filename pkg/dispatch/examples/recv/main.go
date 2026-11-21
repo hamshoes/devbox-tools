@@ -54,6 +54,20 @@ func main() {
 				return
 			}
 			fmt.Printf("exec %s forward_cancel %s\n", e.ID, args.Name)
+		case dispatch.ActionNotify:
+			args, err := dispatch.ParseNotify(e)
+			if err != nil {
+				fmt.Printf("rejected exec %s: %v\n", e.ID, err)
+				return
+			}
+			fmt.Printf("exec %s notify title=%q subtitle=%q message=%q url=%q\n", e.ID, args.Title, args.Subtitle, args.Message, args.URL)
+		case dispatch.ActionClip:
+			args, err := dispatch.ParseClip(e)
+			if err != nil {
+				fmt.Printf("rejected exec %s: %v\n", e.ID, err)
+				return
+			}
+			fmt.Printf("exec %s clip %d bytes: %q\n", e.ID, len(args.Text), args.Text)
 		default:
 			args, err := dispatch.ParseOpenURL(e)
 			if err != nil {

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/hamshoes/devbox-tools/pkg/dispatch"
 	"github.com/hamshoes/devbox-tools/pkg/tether"
@@ -25,7 +26,7 @@ import (
 var version = "dev"
 
 const (
-	maxRequest   = 64 << 10
+	maxRequest   = 4 << 20 // a clip of 512 KiB can escape to several times its size
 	readDeadline = 5 * time.Second
 	sendTimeout  = 2 * time.Second
 )
@@ -197,20 +198,38 @@ func handle(req dispatch.Request, peer tether.Peer, fwd *forwards, log *slog.Log
 			return dispatch.Response{Error: err.Error()}
 		}
 		args, _ := dispatch.ParseOpenURL(exec)
+		return deliver(req.Action, exec, peer, log, "url", dispatch.RedactURL(args.URL))
 
-		ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
-		defer cancel()
-		err = peer.Send(ctx, exec)
-		switch {
-		case errors.Is(err, tether.ErrNotConnected):
-			log.Info("request", "action", req.Action, "delivered", false, "id", exec.ID, "url", dispatch.RedactURL(args.URL))
-			return dispatch.Response{OK: true, Error: "mac not connected"}
-		case err != nil:
-			log.Warn("request", "action", req.Action, "delivered", false, "id", exec.ID, "url", dispatch.RedactURL(args.URL), "err", err)
-			return dispatch.Response{Error: "send failed"}
+	case dispatch.ActionNotify:
+		var a dispatch.NotifyArgs
+		if err := json.Unmarshal(req.Args, &a); err != nil {
+			return dispatch.Response{Error: "bad args"}
 		}
-		log.Info("request", "action", req.Action, "delivered", true, "id", exec.ID, "url", dispatch.RedactURL(args.URL))
-		return dispatch.Response{OK: true, Delivered: true, ID: exec.ID}
+		exec, err := dispatch.NewNotify(a)
+		if err != nil {
+			log.Info("request", "action", req.Action, "rejected", err)
+			return dispatch.Response{Error: err.Error()}
+		}
+		a, _ = dispatch.ParseNotify(exec)
+		// Message content is never logged, only its length.
+		attrs := []any{"title", a.Title, "message_runes", utf8.RuneCountInString(a.Message)}
+		if a.URL != "" {
+			attrs = append(attrs, "url", dispatch.RedactURL(a.URL))
+		}
+		return deliver(req.Action, exec, peer, log, attrs...)
+
+	case dispatch.ActionClip:
+		var a dispatch.ClipArgs
+		if err := json.Unmarshal(req.Args, &a); err != nil {
+			return dispatch.Response{Error: "bad args"}
+		}
+		exec, err := dispatch.NewClip(a.Text)
+		if err != nil {
+			log.Info("request", "action", req.Action, "rejected", err)
+			return dispatch.Response{Error: err.Error()}
+		}
+		// Clipboard content is never logged, only its size.
+		return deliver(req.Action, exec, peer, log, "bytes", len(a.Text))
 	}
 	log.Info("request", "action", "unknown")
 	return dispatch.Response{Error: "unknown action"}
@@ -228,4 +247,22 @@ func resultResponse(v any) dispatch.Response {
 		return dispatch.Response{Error: "internal error"}
 	}
 	return dispatch.Response{OK: true, Result: data}
+}
+
+// deliver sends exec to the Mac and builds the response; attrs are extra log fields.
+func deliver(action string, exec dispatch.Exec, peer tether.Peer, log *slog.Logger, attrs ...any) dispatch.Response {
+	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+	defer cancel()
+	err := peer.Send(ctx, exec)
+	base := append([]any{"action", action, "id", exec.ID}, attrs...)
+	switch {
+	case errors.Is(err, tether.ErrNotConnected):
+		log.Info("request", append(base, "delivered", false)...)
+		return dispatch.Response{OK: true, Error: "mac not connected"}
+	case err != nil:
+		log.Warn("request", append(base, "delivered", false, "err", err)...)
+		return dispatch.Response{Error: "send failed"}
+	}
+	log.Info("request", append(base, "delivered", true)...)
+	return dispatch.Response{OK: true, Delivered: true, ID: exec.ID}
 }
