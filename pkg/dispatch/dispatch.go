@@ -126,6 +126,8 @@ type Response struct {
 	Delivered bool   `json:"delivered"`
 	Error     string `json:"error,omitempty"`
 	ID        string `json:"id,omitempty"`
+	// Result carries the payload of expose, unexpose and ports.
+	Result json.RawMessage `json:"result,omitempty"`
 }
 
 func SocketPath() string {
