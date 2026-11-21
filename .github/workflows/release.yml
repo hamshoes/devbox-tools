@@ -2,7 +2,7 @@ name: release
 on:
   push:
     branches: [main]
-    paths: ['tools/**', '!tools/**/*.md']
+    paths: ['tools/**', '!tools/**/*.md', 'pkg/**', '!pkg/**/*.md']
   workflow_dispatch:
 
 permissions:
@@ -37,14 +37,14 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: actions/setup-go@v5
         with:
-          go-version-file: tools/${{ matrix.tool }}/go.mod
+          go-version-file: ${{ matrix.dir }}/go.mod
           cache: false
       - name: vet
-        working-directory: tools/${{ matrix.tool }}
+        working-directory: ${{ matrix.dir }}
         env: { GOWORK: 'off' }
         run: go vet ./...
       - name: build
-        run: scripts/build.sh "${{ matrix.tool }}" "${{ matrix.version }}"
+        run: scripts/build.sh "${{ matrix.kind }}" "${{ matrix.name }}" "${{ matrix.version }}"
       - name: release
         env: { GH_TOKEN: '${{ github.token }}' }
-        run: scripts/release.sh "${{ matrix.tool }}" "${{ matrix.version }}" "${{ matrix.prev }}"
+        run: scripts/release.sh "${{ matrix.kind }}" "${{ matrix.name }}" "${{ matrix.version }}" "${{ matrix.prev }}"

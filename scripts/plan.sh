@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Prints `any=` and `matrix=` lines for $GITHUB_OUTPUT: which tools need a release, and their next versions.
+# Prints `any=` and `matrix=` lines for $GITHUB_OUTPUT: which tools and libraries need a release, and their next versions.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
+. scripts/lib.sh
 
 jq -e '.version == 1 and (.tools | type == "array")' manifest.json >/dev/null 2>&1 \
   || { echo "error: manifest.json is missing, not valid JSON, or its version is not 1" >&2; exit 1; }
@@ -15,20 +16,30 @@ for name in $(jq -r '.tools[].name' manifest.json); do
 done
 
 matrix='[]'
-for mod in tools/*/go.mod; do
+for mod in tools/*/go.mod pkg/*/go.mod; do
   [ -e "$mod" ] || continue
   dir=$(dirname "$mod")
-  tool=$(basename "$dir")
-  prev=$(git tag -l "tools/$tool/v*" --sort=-v:refname | head -n1)
+  name=$(basename "$dir")
+  case $dir in tools/*) kind=tool ;; *) kind=pkg ;; esac
+
+  paths=$(release_paths "$kind" "$name")
+  specs=()
+  for p in $paths; do
+    [ -f "$p/go.mod" ] || { echo "error: $dir replaces $p, which has no go.mod" >&2; exit 1; }
+    specs+=("$p" ":(glob,exclude)$p/**/*.md")
+  done
+
+  prefix=$(tag_prefix "$kind" "$name")
+  prev=$(git tag -l "$prefix/v*" --sort=-v:refname | head -n1)
 
   if [ -z "$prev" ]; then
     version=v0.1.0
   else
-    if git diff --quiet "$prev" HEAD -- "$dir" ":(glob,exclude)$dir/**/*.md"; then
+    if git diff --quiet "$prev" HEAD -- "${specs[@]}"; then
       continue
     fi
     bump=patch
-    trailers=$(git log --format='%(trailers:key=Release-As,valueonly)' "$prev"..HEAD -- "$dir" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+    trailers=$(git log --format='%(trailers:key=Release-As,valueonly)' "$prev"..HEAD -- "${specs[@]}" | tr '[:upper:]' '[:lower:]' | tr -d ' ')
     if grep -qx major <<<"$trailers"; then
       bump=major
     elif grep -qx minor <<<"$trailers"; then
@@ -42,8 +53,8 @@ for mod in tools/*/go.mod; do
     esac
   fi
 
-  matrix=$(jq -c --arg tool "$tool" --arg version "$version" --arg prev "${prev:+${prev##*/}}" \
-    '. + [{tool: $tool, version: $version, prev: $prev}]' <<<"$matrix")
+  matrix=$(jq -c --arg kind "$kind" --arg name "$name" --arg dir "$dir" --arg version "$version" --arg prev "${prev:+${prev##*/}}" \
+    '. + [{kind: $kind, name: $name, dir: $dir, version: $version, prev: $prev}]' <<<"$matrix")
 done
 
 if [ "$matrix" = '[]' ]; then echo "any=false"; else echo "any=true"; fi

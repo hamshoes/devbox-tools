@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Usage: build.sh <tool> <version> — cross-compile and package one tool into dist/.
+# Usage: build.sh <kind> <name> <version> — cross-compile and package one tool into dist/. Libraries have nothing to package.
 set -euo pipefail
-tool=${1:?usage: build.sh <tool> <version>}
-version=${2:?usage: build.sh <tool> <version>}
+kind=${1:?usage: build.sh <tool|pkg> <name> <version>}
+name=${2:?usage: build.sh <tool|pkg> <name> <version>}
+version=${3:?usage: build.sh <tool|pkg> <name> <version>}
 cd "$(git rev-parse --show-toplevel)"
+
+if [ "$kind" = pkg ]; then
+  echo "pkg/$name $version: library, nothing to package"
+  exit 0
+fi
+tool=$name
 
 TARGETS="linux/arm64"
 [ -f "tools/$tool/.release" ] && . "tools/$tool/.release"

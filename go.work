@@ -1,6 +1,7 @@
 go 1.27.1
 
 use (
+	./pkg/tether
 	./tools/proj
 	./tools/scratch
 	./tools/unwrapped

@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
-# Usage: release.sh <tool> <version> <prev> — create the GitHub release for one tool from dist/.
+# Usage: release.sh <kind> <name> <version> <prev> — create the GitHub release for one tool (from dist/) or library (tag and notes only).
 set -euo pipefail
-tool=${1:?usage: release.sh <tool> <version> <prev>}
-version=${2:?usage: release.sh <tool> <version> <prev>}
-prev=${3-}
+kind=${1:?usage: release.sh <tool|pkg> <name> <version> <prev>}
+name=${2:?usage: release.sh <tool|pkg> <name> <version> <prev>}
+version=${3:?usage: release.sh <tool|pkg> <name> <version> <prev>}
+prev=${4-}
 cd "$(git rev-parse --show-toplevel)"
+. scripts/lib.sh
 
-tag="tools/$tool/$version"
+prefix=$(tag_prefix "$kind" "$name")
+tag="$prefix/$version"
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null || gh release view "$tag" >/dev/null 2>&1; then
   echo "error: tag/release $tag already exists; refusing to overwrite" >&2
   exit 1
 fi
 
-if [ -n "$prev" ]; then
-  notes=$(git log --format='- %s (%h)' "tools/$tool/$prev..HEAD" -- "tools/$tool")
-else
-  notes=$(git log --format='- %s (%h)' -- "tools/$tool")
-fi
+paths=$(release_paths "$kind" "$name")
+range=()
+[ -n "$prev" ] && range=("$prefix/$prev..HEAD")
+notes=$(git log --format='- %s (%h)' ${range[@]+"${range[@]}"} -- $paths)
 
-gh release create "$tag" dist/* \
-  --title "$tool $version" --notes "$notes" --target "$GITHUB_SHA" --latest=false
+assets=()
+[ "$kind" = tool ] && assets=(dist/*)
+
+gh release create "$tag" ${assets[@]+"${assets[@]}"} \
+  --title "$name $version" --notes "$notes" --target "$GITHUB_SHA" --latest=false
