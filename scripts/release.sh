@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Usage: release.sh <kind> <name> <version> <prev> — create the GitHub release for one tool (from dist/) or library (tag and notes only).
+# Usage: release.sh <kind> <name> <version> <prev> — create the GitHub release for one tool or pair (from dist/) or library (tag and notes only).
 set -euo pipefail
-kind=${1:?usage: release.sh <tool|pkg> <name> <version> <prev>}
-name=${2:?usage: release.sh <tool|pkg> <name> <version> <prev>}
-version=${3:?usage: release.sh <tool|pkg> <name> <version> <prev>}
+kind=${1:?usage: release.sh <tool|pair|pkg> <name> <version> <prev>}
+name=${2:?usage: release.sh <tool|pair|pkg> <name> <version> <prev>}
+version=${3:?usage: release.sh <tool|pair|pkg> <name> <version> <prev>}
 prev=${4-}
 cd "$(git rev-parse --show-toplevel)"
 . scripts/lib.sh
@@ -21,7 +21,7 @@ range=()
 notes=$(git log --format='- %s (%h)' ${range[@]+"${range[@]}"} -- $paths)
 
 assets=()
-[ "$kind" = tool ] && assets=(dist/*)
+[ "$kind" != pkg ] && assets=(dist/*)
 
 gh release create "$tag" ${assets[@]+"${assets[@]}"} \
   --title "$name $version" --notes "$notes" --target "$GITHUB_SHA" --latest=false

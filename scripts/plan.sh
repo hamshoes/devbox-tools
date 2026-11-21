@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prints `any=` and `matrix=` lines for $GITHUB_OUTPUT: which tools and libraries need a release, and their next versions.
+# Prints `any=` and `matrix=` lines for $GITHUB_OUTPUT: which tools, pairs and libraries need a release, and their next versions.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 . scripts/lib.sh
@@ -7,20 +7,24 @@ cd "$(git rev-parse --show-toplevel)"
 jq -e '.version == 1 and (.tools | type == "array")' manifest.json >/dev/null 2>&1 \
   || { echo "error: manifest.json is missing, not valid JSON, or its version is not 1" >&2; exit 1; }
 seen=
-for name in $(jq -r '.tools[].name' manifest.json); do
-  [ -f "tools/$name/go.mod" ] || { echo "error: manifest.json lists '$name' but tools/$name/go.mod does not exist" >&2; exit 1; }
-  case " $seen " in
-    *" $name "*) echo "error: manifest.json lists '$name' more than once" >&2; exit 1 ;;
+while IFS=$'\t' read -r name kind; do
+  case $kind in
+    tool) [ -f "tools/$name/go.mod" ] || { echo "error: manifest.json lists tool '$name' but tools/$name/go.mod does not exist" >&2; exit 1; } ;;
+    pair) { [ -f "pairs/$name/go.mod" ] && [ -f "pairs/$name/manifest.json" ]; } || { echo "error: manifest.json lists pair '$name' but pairs/$name/go.mod or manifest.json does not exist" >&2; exit 1; } ;;
+    *) echo "error: manifest.json lists '$name' with unknown kind '$kind'" >&2; exit 1 ;;
   esac
-  seen="$seen $name"
-done
+  case " $seen " in
+    *" $kind/$name "*) echo "error: manifest.json lists $kind '$name' more than once" >&2; exit 1 ;;
+  esac
+  seen="$seen $kind/$name"
+done < <(jq -r '.tools[] | [.name, (.kind // "tool")] | @tsv' manifest.json)
 
 matrix='[]'
-for mod in tools/*/go.mod pkg/*/go.mod; do
+for mod in tools/*/go.mod pkg/*/go.mod pairs/*/go.mod; do
   [ -e "$mod" ] || continue
   dir=$(dirname "$mod")
   name=$(basename "$dir")
-  case $dir in tools/*) kind=tool ;; *) kind=pkg ;; esac
+  case $dir in tools/*) kind=tool ;; pairs/*) kind=pair ;; *) kind=pkg ;; esac
 
   paths=$(release_paths "$kind" "$name")
   specs=()

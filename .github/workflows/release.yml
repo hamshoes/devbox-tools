@@ -2,7 +2,7 @@ name: release
 on:
   push:
     branches: [main]
-    paths: ['tools/**', '!tools/**/*.md', 'pkg/**', '!pkg/**/*.md']
+    paths: ['tools/**', '!tools/**/*.md', 'pkg/**', '!pkg/**/*.md', 'pairs/**', '!pairs/**/*.md']
   workflow_dispatch:
 
 permissions:
@@ -43,6 +43,12 @@ jobs:
         working-directory: ${{ matrix.dir }}
         env: { GOWORK: 'off' }
         run: go vet ./...
+      - name: generated code is current
+        if: matrix.kind == 'pair'
+        run: |
+          scripts/pair-generate.sh "${{ matrix.name }}"
+          git diff --exit-code -- "${{ matrix.dir }}" || { echo "error: generated code is stale; run scripts/pair-generate.sh ${{ matrix.name }} and commit" >&2; exit 1; }
+          [ -z "$(git ls-files --others --exclude-standard -- "${{ matrix.dir }}")" ] || { echo "error: generated code is not committed" >&2; exit 1; }
       - name: build
         run: scripts/build.sh "${{ matrix.kind }}" "${{ matrix.name }}" "${{ matrix.version }}"
       - name: release
