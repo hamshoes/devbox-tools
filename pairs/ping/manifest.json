@@ -1,0 +1,6 @@
+{
+  "pair": "ping",
+  "vm":  { "app": "ping-vm",  "calls": ["ping.v1.PingEvents/RequestSeen"] },
+  "mac": { "app": "ping-mac", "calls": ["ping.v1.PingControl/Ping"] },
+  "limits": { "max_message": 1048576 }
+}

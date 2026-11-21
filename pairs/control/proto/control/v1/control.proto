@@ -1,0 +1,17 @@
+syntax = "proto3";
+package control.v1;
+option go_package = "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1;controlv1";
+
+message PairSpec   { string name = 1; string version = 2; uint32 vm_port = 3; string token = 4; }
+message PairResult { string name = 1; string state = 2; string error = 3; string host = 4; uint32 vm_port = 5; string version = 6; }
+// state: "started" | "failed" | "not_installed" | "mismatch"
+
+message ApplyPairsRequest  { repeated PairSpec pairs = 1; }
+message ApplyPairsResponse { repeated PairResult results = 1; }
+message HealthRequest  {}
+message HealthResponse { string side = 1; string version = 2; string at = 3; }
+message PairStatusRequest  { PairResult status = 1; }
+message PairStatusResponse {}
+
+service Control       { rpc ApplyPairs(ApplyPairsRequest) returns (ApplyPairsResponse); rpc Health(HealthRequest) returns (HealthResponse); }
+service ControlEvents { rpc PairStatus(PairStatusRequest) returns (PairStatusResponse); rpc Health(HealthRequest) returns (HealthResponse); }
