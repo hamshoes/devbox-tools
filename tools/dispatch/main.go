@@ -45,6 +45,12 @@ func main() {
 			usage()
 		}
 		os.Exit(openOrPrint(os.Args[2]))
+	case "expose":
+		os.Exit(expose(os.Args[2:]))
+	case "unexpose":
+		os.Exit(unexpose(os.Args[2:]))
+	case "ports":
+		os.Exit(ports())
 	case "status":
 		os.Exit(status())
 	default:
@@ -53,7 +59,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: dispatch open <url> | open-or-print <url> | status | --version")
+	fmt.Fprintln(os.Stderr, "usage: dispatch open <url> | open-or-print <url> | expose <port> | unexpose <name|port> | ports | status | --version")
 	os.Exit(exitInvalid)
 }
 
@@ -110,7 +116,7 @@ func call(req dispatch.Request) (dispatch.Response, error) {
 		return resp, err
 	}
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(10 * time.Second))
+	conn.SetDeadline(time.Now().Add(20 * time.Second))
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return resp, err
 	}

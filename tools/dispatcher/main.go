@@ -60,16 +60,23 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	fwd := newForwards(log)
+	router := tether.NewRouter(log)
+	tether.On(router, fwd.onReady)
+	tether.On(router, fwd.onFailed)
 	peer, err := tether.Listen(ctx, tether.ServerConfig{
 		Addr:  fmt.Sprintf("0.0.0.0:%d", dispatch.DispatcherPort),
 		Path:  dispatch.TetherPath,
 		Token: token,
-	}, tether.NewRouter(log), log)
+	}, router, log)
 	if err != nil {
 		return err
 	}
 	defer peer.Close()
+	fwd.peer = peer
 	peer.OnState(func(s tether.State) { log.Info("tether", "state", s) })
+	peer.OnState(fwd.onState)
+	go fwd.watch(ctx)
 
 	sock := dispatch.SocketPath()
 	if err := os.MkdirAll(filepath.Dir(sock), 0o700); err != nil {
@@ -100,7 +107,7 @@ func run() error {
 			}
 			return err
 		}
-		go serve(conn, peer, log)
+		go serve(conn, peer, fwd, log)
 	}
 }
 
@@ -135,7 +142,7 @@ func loadToken() string {
 	return ""
 }
 
-func serve(conn net.Conn, peer tether.Peer, log *slog.Logger) {
+func serve(conn net.Conn, peer tether.Peer, fwd *forwards, log *slog.Logger) {
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(readDeadline))
 	var req dispatch.Request
@@ -143,7 +150,9 @@ func serve(conn net.Conn, peer tether.Peer, log *slog.Logger) {
 		reply(conn, dispatch.Response{Error: "bad request"})
 		return
 	}
-	resp := handle(req, peer, log)
+	// expose can block for replyWait before it answers.
+	conn.SetDeadline(time.Now().Add(replyWait + readDeadline))
+	resp := handle(req, peer, fwd, log)
 	reply(conn, resp)
 }
 
@@ -151,8 +160,33 @@ func reply(conn net.Conn, resp dispatch.Response) {
 	json.NewEncoder(conn).Encode(resp)
 }
 
-func handle(req dispatch.Request, peer tether.Peer, log *slog.Logger) dispatch.Response {
+func handle(req dispatch.Request, peer tether.Peer, fwd *forwards, log *slog.Logger) dispatch.Response {
 	switch req.Action {
+	case dispatch.ActionExpose:
+		var a dispatch.ExposeArgs
+		if err := json.Unmarshal(req.Args, &a); err != nil {
+			return dispatch.Response{Error: "bad args"}
+		}
+		res, err := fwd.expose(a)
+		if err != nil {
+			log.Info("request", "action", req.Action, "rejected", err)
+			return dispatch.Response{Error: friendly(err)}
+		}
+		return resultResponse(res)
+
+	case dispatch.ActionUnexpose:
+		var a dispatch.UnexposeArgs
+		if err := json.Unmarshal(req.Args, &a); err != nil || (a.Name == "" && a.Port == 0) {
+			return dispatch.Response{Error: "bad args"}
+		}
+		if err := fwd.unexpose(a); err != nil {
+			return dispatch.Response{Error: err.Error()}
+		}
+		return resultResponse(struct{}{})
+
+	case dispatch.ActionPorts:
+		return resultResponse(fwd.ports())
+
 	case dispatch.ActionStatus:
 		return dispatch.Response{OK: true, Delivered: peer.State() == tether.Open}
 
@@ -186,4 +220,12 @@ func openURLArg(req dispatch.Request) string {
 	var a dispatch.OpenURLArgs
 	json.Unmarshal(req.Args, &a)
 	return a.URL
+}
+
+func resultResponse(v any) dispatch.Response {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return dispatch.Response{Error: "internal error"}
+	}
+	return dispatch.Response{OK: true, Result: data}
 }
