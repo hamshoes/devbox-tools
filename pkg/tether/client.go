@@ -80,6 +80,7 @@ func (c *client) connectLoop() {
 		hctx, cancel := context.WithTimeout(c.ctx, handshakeTimeout)
 		conn, resp, err := websocket.Dial(hctx, c.url, &websocket.DialOptions{HTTPHeader: c.header})
 		cancel()
+		wait := backoff
 		if err == nil {
 			backoff = c.min
 			c.run(c.ctx, conn)
@@ -93,7 +94,7 @@ func (c *client) connectLoop() {
 			c.log.Debug("tether: connect failed", "url", c.url, "err", err)
 			backoff = min(backoff*2, c.max)
 		}
-		if !sleep(c.ctx, jitter(backoff)) {
+		if !sleep(c.ctx, jitter(wait)) {
 			return
 		}
 	}
