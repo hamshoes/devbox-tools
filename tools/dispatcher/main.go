@@ -94,6 +94,7 @@ func run() error {
 		return err
 	}
 	log.Info("listening", "port", dispatch.DispatcherPort, "socket", sock)
+	defer startControl(ctx, log, peer, fwd.ip, token)()
 
 	go func() {
 		<-ctx.Done()
