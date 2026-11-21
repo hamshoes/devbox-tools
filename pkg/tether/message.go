@@ -15,19 +15,33 @@ import (
 type Message interface{ MessageType() string }
 
 // Envelope is the wire format: one per WebSocket text frame.
+//
+// ID is set on a request that expects a reply; the reply carries it back in
+// Re, with either Data or Err. Plain messages have neither.
 type Envelope struct {
 	Type string          `json:"type"`
 	Sent time.Time       `json:"sent"`
-	Data json.RawMessage `json:"data"`
+	Data json.RawMessage `json:"data,omitempty"`
+	ID   uint64          `json:"id,omitempty"`
+	Re   uint64          `json:"re,omitempty"`
+	Err  *RemoteError    `json:"err,omitempty"`
 }
 
 // Encode wraps m in an envelope and returns its JSON.
 func Encode(m Message) ([]byte, error) {
-	data, err := json.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("tether: encode %s: %w", m.MessageType(), err)
+	return encode(m, 0, 0, nil)
+}
+
+func encode(m Message, id, re uint64, rerr *RemoteError) ([]byte, error) {
+	e := Envelope{Type: m.MessageType(), Sent: time.Now().UTC(), ID: id, Re: re, Err: rerr}
+	if rerr == nil {
+		data, err := json.Marshal(m)
+		if err != nil {
+			return nil, fmt.Errorf("tether: encode %s: %w", m.MessageType(), err)
+		}
+		e.Data = data
 	}
-	return json.Marshal(Envelope{Type: m.MessageType(), Sent: time.Now().UTC(), Data: data})
+	return json.Marshal(e)
 }
 
 // Decode unpacks e into a T. T should be a value type, not a pointer.
@@ -74,12 +88,7 @@ func On[T Message](r *Router, fn func(ctx context.Context, m T)) {
 }
 
 // dispatch never fails: anything it cannot deliver is logged and dropped.
-func (r *Router) dispatch(ctx context.Context, frame []byte) {
-	var e Envelope
-	if err := json.Unmarshal(frame, &e); err != nil {
-		r.log.Warn("tether: dropping malformed envelope", "err", err)
-		return
-	}
+func (r *Router) dispatch(ctx context.Context, e Envelope) {
 	r.mu.RLock()
 	h := r.handlers[e.Type]
 	r.mu.RUnlock()

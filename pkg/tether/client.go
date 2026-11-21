@@ -22,11 +22,13 @@ type ClientConfig struct {
 	PingInterval time.Duration // default 20s
 	PingTimeout  time.Duration // default 10s
 	MaxMessage   int64         // default 1 MiB
+	HTTPClient   *http.Client  // optional; its transport dials the connection (e.g. through a unix socket)
 }
 
 type client struct {
 	*base
 	url    string
+	hc     *http.Client
 	header http.Header
 	min    time.Duration
 	max    time.Duration
@@ -58,6 +60,7 @@ func Dial(ctx context.Context, cfg ClientConfig, r *Router, log *slog.Logger) (P
 	c := &client{
 		base:   newBase(r, log, cfg.PingInterval, cfg.PingTimeout, cfg.MaxMessage),
 		url:    cfg.URL,
+		hc:     cfg.HTTPClient,
 		header: http.Header{"Authorization": {"Bearer " + cfg.Token}},
 		min:    cfg.MinBackoff,
 		max:    cfg.MaxBackoff,
@@ -78,7 +81,7 @@ func (c *client) connectLoop() {
 	backoff := c.min
 	for c.ctx.Err() == nil {
 		hctx, cancel := context.WithTimeout(c.ctx, handshakeTimeout)
-		conn, resp, err := websocket.Dial(hctx, c.url, &websocket.DialOptions{HTTPHeader: c.header})
+		conn, resp, err := websocket.Dial(hctx, c.url, &websocket.DialOptions{HTTPClient: c.hc, HTTPHeader: c.header})
 		cancel()
 		wait := backoff
 		if err == nil {

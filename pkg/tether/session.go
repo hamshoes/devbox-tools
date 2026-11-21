@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -25,6 +26,8 @@ type Peer interface {
 	// Send queues m on the open connection. Nothing is queued while the
 	// connection is down; it returns ErrNotConnected instead.
 	Send(ctx context.Context, m Message) error
+	// roundTrip is the transport under Call.
+	roundTrip(ctx context.Context, m Message) (Envelope, error)
 	State() State
 	// OnState registers fn for every state change, called from a single
 	// goroutine. The current state is delivered to fn first.
@@ -37,6 +40,9 @@ type Peer interface {
 type link struct {
 	out  chan []byte
 	done chan struct{}
+
+	pmu     sync.Mutex
+	pending map[uint64]chan Envelope
 }
 
 // base is the half of a Peer shared by server and client.
@@ -47,6 +53,8 @@ type base struct {
 	ping        time.Duration
 	pingTimeout time.Duration
 	maxMessage  int64
+
+	nextID atomic.Uint64
 
 	mu   sync.Mutex
 	link *link
@@ -99,7 +107,7 @@ func (b *base) run(parent context.Context, conn *websocket.Conn) {
 	conn.SetReadLimit(b.maxMessage)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	l := &link{out: make(chan []byte, 64), done: make(chan struct{})}
+	l := &link{out: make(chan []byte, 64), done: make(chan struct{}), pending: map[uint64]chan Envelope{}}
 	b.mu.Lock()
 	b.link = l
 	b.mu.Unlock()
@@ -122,7 +130,7 @@ func (b *base) run(parent context.Context, conn *websocket.Conn) {
 				b.log.Warn("tether: dropping non-text frame")
 				continue
 			}
-			b.router.dispatch(ctx, frame)
+			b.receive(ctx, l, frame)
 		}
 	})
 	wg.Go(func() { // writer
