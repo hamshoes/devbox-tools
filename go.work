@@ -3,6 +3,8 @@ go 1.27.1
 use (
 	./pkg/tether
 	./pkg/dispatch
+	./tools/dispatcher
+	./tools/dispatch
 	./tools/tetherlog
 	./tools/tetherping
 	./tools/proj
