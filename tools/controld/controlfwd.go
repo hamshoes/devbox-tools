@@ -18,6 +18,7 @@ const forwardsTimeout = 15 * time.Second
 type controlPlane struct {
 	cfg    *platform.Config
 	gwSock string
+	pairs  *pairMgr
 
 	mu sync.Mutex
 	ip string // container IP the Mac forwards to; looked up again while empty

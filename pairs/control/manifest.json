@@ -6,6 +6,9 @@
     "control.v1.Forwards/Expose", "control.v1.Forwards/Unexpose",
     "control.v1.Forwards/ListForwards"
   ] },
-  "mac": { "calls": ["control.v1.Control/ApplyPairs", "control.v1.Control/Health"] },
+  "mac": { "calls": [
+    "control.v1.Control/ApplyPairs", "control.v1.Control/Health",
+    "control.v1.Control/ApplyServices"
+  ] },
   "limits": { "max_message": 1048576 }
 }

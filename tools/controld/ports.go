@@ -69,7 +69,7 @@ func (w *portWatcher) run(ctx context.Context) {
 		switch {
 		case needSnap:
 			flush = nil
-			send(&controlv1.PortsChangedRequest{Snapshot: true, Opened: sortedListeners(cur)}, cur)
+			send(&controlv1.PortsChangedRequest{Snapshot: true, Opened: sortedListeners(cur), Host: hostOrEmpty()}, cur)
 		default:
 			if opened, closed := diffListeners(sent, cur); len(opened)+len(closed) > 0 {
 				flush = time.After(portsDebounce)
@@ -94,7 +94,7 @@ func (w *portWatcher) run(ctx context.Context) {
 				continue
 			}
 			if opened, closed := diffListeners(sent, cur); len(opened)+len(closed) > 0 {
-				send(&controlv1.PortsChangedRequest{Opened: opened, Closed: closed}, cur)
+				send(&controlv1.PortsChangedRequest{Opened: opened, Closed: closed, Host: hostOrEmpty()}, cur)
 			}
 		}
 	}
@@ -163,6 +163,12 @@ func (w *portWatcher) scan() (map[int]*controlv1.Listener, error) {
 		out[p] = l
 	}
 	return out, nil
+}
+
+// hostOrEmpty is the container IP for PortsChanged, or "" if it can't be found.
+func hostOrEmpty() string {
+	ip, _ := containerIP()
+	return ip
 }
 
 func rank(ip net.IP) int {

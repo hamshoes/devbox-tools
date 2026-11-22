@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sync"
 	"time"
 
@@ -24,7 +26,6 @@ const (
 	crashLimit     = 5
 	crashWindow    = 5 * time.Minute
 	controlDownMax = 30 * time.Second
-	syncTimeout    = 25 * time.Second
 )
 
 var (
@@ -56,24 +57,26 @@ type runningPair struct {
 
 // pairMgr starts and stops the VM side of pairs on the control plane's say-so.
 type pairMgr struct {
-	log     *slog.Logger
-	cfg     *platform.Config
-	host    string
-	gwBin   string
-	root    string // installed pairs
-	state   string // $DEVBOX_TETHER_STATE_DIR
-	control string // control gateway socket, for PairStatus
-	ctx     context.Context
+	log      *slog.Logger
+	cfg      *platform.Config
+	host     string
+	gwBin    string
+	root     string // installed pairs
+	state    string // $DEVBOX_TETHER_STATE_DIR
+	control  string // control gateway socket, for PairStatus
+	problems *problems
+	ctx      context.Context
 
 	apply sync.Mutex // one ApplyPairs at a time
 	mu    sync.Mutex
 	pairs map[string]*runningPair
+	last  map[string]*controlv1.PairResult // latest state of each pair this session, for status
 }
 
 func (m *pairMgr) pairState(name string) string { return filepath.Join(m.state, name) }
 
 // ApplyPairs makes the running set equal to the request.
-func (m *pairMgr) ApplyPairs(ctx context.Context, req *controlv1.ApplyPairsRequest) (*controlv1.ApplyPairsResponse, error) {
+func (m *pairMgr) ApplyPairs(_ context.Context, req *controlv1.ApplyPairsRequest) (*controlv1.ApplyPairsResponse, error) {
 	m.apply.Lock()
 	defer m.apply.Unlock()
 
@@ -87,6 +90,8 @@ func (m *pairMgr) ApplyPairs(ctx context.Context, req *controlv1.ApplyPairsReque
 		switch {
 		case !pairNameRE.MatchString(s.Name):
 			r.State, r.Error = "failed", "invalid pair name"
+		case s.Name == "control":
+			r.State, r.Error = "failed", "control is not an applied pair"
 		case want[s.Name]:
 			r.State, r.Error = "failed", "pair listed twice"
 		case int(s.VmPort) < m.cfg.PairPortMin || int(s.VmPort) > m.cfg.PairPortMax:
@@ -127,7 +132,6 @@ func (m *pairMgr) ApplyPairs(ctx context.Context, req *controlv1.ApplyPairsReque
 		m.stop(p, "not in the applied set")
 	}
 
-	synced := false
 	for _, i := range valid {
 		s, r := req.Pairs[i], results[i]
 		m.mu.Lock()
@@ -138,11 +142,6 @@ func (m *pairMgr) ApplyPairs(ctx context.Context, req *controlv1.ApplyPairsReque
 			continue
 		}
 		dir, man, err := m.locate(s.Name, s.Version)
-		if errors.Is(err, os.ErrNotExist) && !synced {
-			synced = true
-			m.runSync(ctx)
-			dir, man, err = m.locate(s.Name, s.Version)
-		}
 		switch {
 		case errors.Is(err, os.ErrNotExist):
 			r.State, r.Error = "not_installed", "pair is not installed on the vm"
@@ -161,6 +160,15 @@ func (m *pairMgr) ApplyPairs(ctx context.Context, req *controlv1.ApplyPairsReque
 		}
 		m.log.Info("pair", "pair", s.Name, "version", r.Version, "port", s.VmPort, "state", r.State, "err", r.Error)
 	}
+	m.mu.Lock()
+	m.last = map[string]*controlv1.PairResult{}
+	for _, r := range results {
+		if r.State != "started" {
+			m.problems.add("pair/"+r.Name, "%s: %s", r.State, r.Error)
+		}
+		m.last[r.Name] = r
+	}
+	m.mu.Unlock()
 	return &controlv1.ApplyPairsResponse{Results: results}, nil
 }
 
@@ -198,28 +206,6 @@ func (m *pairMgr) locate(name, version string) (string, packaged, error) {
 		}
 	}
 	return dir, man, nil
-}
-
-// runSync runs devbox-tools-sync once, so a pair installed since the last sync turns up.
-func (m *pairMgr) runSync(ctx context.Context) {
-	bin, err := exec.LookPath("devbox-tools-sync")
-	if err != nil {
-		m.log.Warn("sync unavailable", "err", err)
-		return
-	}
-	sctx, cancel := context.WithTimeout(ctx, syncTimeout)
-	defer cancel()
-	m.log.Info("running devbox-tools-sync")
-	if out, err := exec.CommandContext(sctx, bin).CombinedOutput(); err != nil {
-		m.log.Warn("sync failed", "err", err, "output", tail(string(out), 300))
-	}
-}
-
-func tail(s string, n int) string {
-	if len(s) > n {
-		return s[len(s)-n:]
-	}
-	return s
 }
 
 func (m *pairMgr) start(s *controlv1.PairSpec, dir string, man packaged) error {
@@ -306,7 +292,23 @@ func (m *pairMgr) recordExit(p *runningPair) bool {
 func (m *pairMgr) giveUp(p *runningPair, msg string) {
 	p.cancel()
 	m.log.Error("pair failed", "pair", p.name, "version", p.version, "port", p.port, "state", "failed", "err", msg)
-	m.report(&controlv1.PairResult{Name: p.name, State: "failed", Error: msg, Host: m.host, VmPort: p.port, Version: p.version})
+	r := &controlv1.PairResult{Name: p.name, State: "failed", Error: msg, Host: m.host, VmPort: p.port, Version: p.version}
+	m.mu.Lock()
+	m.last[p.name] = r
+	m.mu.Unlock()
+	m.problems.add("pair/"+p.name, "%s", msg)
+	m.report(r)
+}
+
+// results returns the latest state of each pair applied this session, by name.
+func (m *pairMgr) results() []*controlv1.PairResult {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*controlv1.PairResult, 0, len(m.last))
+	for _, name := range slices.Sorted(maps.Keys(m.last)) {
+		out = append(out, m.last[name])
+	}
+	return out
 }
 
 // report sends PairStatus over the control gateway.
@@ -342,6 +344,9 @@ func (m *pairMgr) stopAll(why string) {
 	for _, p := range all {
 		m.stop(p, why)
 	}
+	m.mu.Lock()
+	clear(m.last)
+	m.mu.Unlock()
 }
 
 func (m *pairMgr) count() int {

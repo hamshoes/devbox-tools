@@ -9,8 +9,9 @@
 //   (clip, notify, open, approve, xcb, snap, feedback...).
 //
 //   It runs as the tether pair `control`: the VM gateway is on
-//   DEVBOX_CONTROL_PORT (published on VM loopback), the Mac gateway is dialled through an ssh
-//   unix-socket forward, and the token is DISPATCH_TOKEN.
+//   DEVBOX_CONTROL_PORT (published on VM loopback), the Mac gateway is
+//   dialled through an ssh unix-socket forward, and the token is
+//   DISPATCH_TOKEN.
 //   Mac side = `dev`. VM side = controld.
 //
 // RULES
@@ -22,16 +23,16 @@
 //      SO_PEERCRED (uid, pid) on every call. For control, controld
 //      also puts the ORIGINAL requester (e.g. the `bb forward` process)
 //      into the request, so forwards are labelled and attributed per instance.
-//   4. Session-scoped. Everything here is released when the session ends or
-//      after 30s without the control connection.
-//   5. Additive changes only within v1. v0.1 messages and paths are frozen;
-//      new things are new methods, fields and services.
+//   4. Pairs and forwards are session-scoped: released when the session ends
+//      or after 30s without the control connection. Services are not: they
+//      keep running after the session ends.
+//   5. control.v1 changes in place; there is one user and no compatibility
+//      to keep.
 //
 // VERSIONS
 //   A schema change changes the hash, and the gateway refuses a mismatch.
-//   `dev` matches the VM: on mismatch it reads `peer_version` from the Mac
-//   gateway's /healthz, downloads that version of the control `_mac` asset,
-//   and restarts the control gateway.
+//   `dev` and the image carry the same devbox.lock, so both sides run the
+//   control version it names.
 //
 // ERRORS (Connect codes)
 //   invalid_argument     bad shape or values (port < 1024, reserved port, bad host)
@@ -42,12 +43,6 @@
 //
 // RESERVED PORTS (never exposed or auto-forwarded)
 //   DEVBOX_RESERVED_PORTS, and any static forward from config
-//
-// ROLLOUT
-//   v0.1  Control.ApplyPairs, Control.Health, ControlEvents.PairStatus,
-//         ControlEvents.Health   ← being built (G1–G3, H1–H2)
-//   v0.2  Forwards.Expose/Unexpose/ListForwards, ControlEvents.PortsChanged,
-//         tether-gw caller stamping.
 // ─────────────────────────────────────────────────────────────────────────────
 
 syntax = "proto3";
@@ -60,15 +55,21 @@ option go_package = "github.com/hamshoes/devbox-tools/pairs/control/gen/control/
 // ═════════════════════════════════════════════════════════════════════════════
 
 service Control {
-  // Since: v0.1. The FULL desired set of pairs for this session: pairs
+  // The FULL desired set of pairs for this session: pairs
   // missing from it are stopped. Sending the same spec again (same name,
   // version and token) leaves a running pair untouched, so after a
   // reconnect `dev` just sends the set again. That's the only resync needed.
   // Never applies to `control` itself.
   rpc ApplyPairs(ApplyPairsRequest) returns (ApplyPairsResponse);
 
-  // Since: v0.1. Liveness check, no side effects.
+  // Liveness check, no side effects. `version` is the build's
+  // release version.
   rpc Health(HealthRequest) returns (HealthResponse);
+
+  // The FULL set of services named in `dev`'s config. controld replaces its
+  // config layer with it; manifest and `bb svc` services stay unless a
+  // config entry names them. Services outlive the session (unlike pairs).
+  rpc ApplyServices(ApplyServicesRequest) returns (ApplyServicesResponse);
 }
 
 message PairSpec {
@@ -80,6 +81,8 @@ message PairSpec {
 message PairResult {
   string name    = 1;
   string state   = 2;  // "started" | "failed" | "not_installed" | "mismatch"
+                       // not_installed: the VM has no such pair; controld never
+                       // syncs to find one
   string error   = 3;
   string host    = 4;  // container IP the Mac forward targets
   uint32 vm_port = 5;
@@ -87,6 +90,27 @@ message PairResult {
 }
 message ApplyPairsRequest  { repeated PairSpec pairs = 1; }
 message ApplyPairsResponse { repeated PairResult results = 1; }
+
+message ServiceSpec {
+  string name             = 1;  // ^[a-z0-9-]{1,32}$
+  string tool             = 2;  // a tool from manifest.json
+  repeated string args    = 3;
+  map<string, string> env = 4;
+  bool enabled            = 5;
+}
+message ServiceStatus {
+  string name             = 1;
+  string tool             = 2;
+  repeated string args    = 3;
+  map<string, string> env = 4;
+  bool enabled            = 5;
+  string source           = 6;  // "config" | "manifest" | "bb"
+  string state            = 7;  // "running" | "disabled" | "not_installed" | "failed"
+  string error            = 8;
+  string since            = 9;  // RFC 3339: when state last changed
+}
+message ApplyServicesRequest  { repeated ServiceSpec services = 1; }
+message ApplyServicesResponse { repeated ServiceStatus services = 1; }  // one per request entry
 
 message HealthRequest  {}
 message HealthResponse {
@@ -100,13 +124,13 @@ message HealthResponse {
 // ═════════════════════════════════════════════════════════════════════════════
 
 service ControlEvents {
-  // Since: v0.1. A pair changed state outside ApplyPairs (crashed, gave up).
+  // A pair changed state outside ApplyPairs (crashed, gave up).
   rpc PairStatus(PairStatusRequest) returns (PairStatusResponse);
 
-  // Since: v0.1. Liveness check, no side effects.
+  // Liveness check, no side effects.
   rpc Health(HealthRequest) returns (HealthResponse);
 
-  // Since: v0.2. Listening TCP sockets in the container changed.
+  // Listening TCP sockets in the container changed.
   // controld polls every 2s and debounces changes over 1s.
   // With `snapshot = true`, `opened` is the complete current list and `dev`
   // replaces what it knew. controld sends a snapshot on every
@@ -129,6 +153,7 @@ message PortsChangedRequest {
   bool snapshot            = 1;
   repeated Listener opened = 2;
   repeated uint32 closed   = 3;  // ignored when snapshot = true
+  string host              = 4;  // container IP: the target for auto forwards
 }
 message PortsChangedResponse {}
 
@@ -142,7 +167,7 @@ message Listener {
 }
 
 service Forwards {
-  // Since: v0.2. Backs `bb forward`.
+  // Backs `bb forward`.
   // `dev` runs `ssh -O forward -L 127.0.0.2:<port>:<target_host>:<port>`
   // (and the localhost equivalent) on its ControlMaster, using the same port
   // on the Mac so devbox:<port> stays the same name.
@@ -151,11 +176,11 @@ service Forwards {
   // the server restarting.
   rpc Expose(ExposeRequest) returns (Forward);
 
-  // Since: v0.2. Removes a dynamic forward ("expose" or "auto").
+  // Removes a dynamic forward ("expose" or "auto").
   // A config forward → failed_precondition. An unknown port → OK (no-op).
   rpc Unexpose(UnexposeRequest) returns (UnexposeResponse);
 
-  // Since: v0.2. Every forward `dev` holds this session: config, expose and
+  // Every forward `dev` holds this session: config, expose and
   // auto. Backs `bb ports` and `dev tether status`.
   rpc ListForwards(ListForwardsRequest) returns (ListForwardsResponse);
 }
@@ -173,6 +198,35 @@ service Local {
   rpc Expose(ExposeRequest) returns (Forward);
   rpc Unexpose(UnexposeRequest) returns (UnexposeResponse);
   rpc ListForwards(ListForwardsRequest) returns (ListForwardsResponse);
+
+  // `bb svc`. Enable/Disable of a service named in dev config fails with
+  // failed_precondition ("set in dev config").
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  rpc EnableService(ServiceRequest) returns (ServiceStatus);
+  rpc DisableService(ServiceRequest) returns (ServiceStatus);
+
+  // `bb status`: what controld runs and what went wrong lately. Works with
+  // no session.
+  rpc Status(StatusRequest) returns (StatusResponse);
+}
+
+message ListServicesRequest  {}
+message ListServicesResponse { repeated ServiceStatus services = 1; }
+message ServiceRequest       { string name = 1; }
+
+message StatusRequest {}
+message StatusResponse {
+  string version                 = 1;  // controld's release version
+  bool   control_running         = 2;  // tether-gw and the control pair are installed
+  bool   session                 = 3;  // the Mac is connected
+  repeated ServiceStatus services = 4;
+  repeated PairResult pairs       = 5;  // pairs started this session, latest state
+  repeated Problem problems       = 6;  // most recent last
+}
+message Problem {
+  string at      = 1;  // RFC 3339
+  string source  = 2;  // e.g. "service/x", "pair/notify", "sync"
+  string message = 3;
 }
 
 // The process that originally asked, filled in by controld from the
@@ -215,7 +269,8 @@ message Forward {
 // {
 //   "pair": "control",
 //   "mac": { "calls": [
-//     "control.v1.Control/ApplyPairs", "control.v1.Control/Health" ] },
+//     "control.v1.Control/ApplyPairs", "control.v1.Control/Health",
+//     "control.v1.Control/ApplyServices" ] },
 //   "vm":  { "calls": [
 //     "control.v1.ControlEvents/PairStatus", "control.v1.ControlEvents/Health",
 //     "control.v1.ControlEvents/PortsChanged",

@@ -62,10 +62,15 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	cp, stopControl := startControl(ctx, log, cfg, token)
+	pr := &problems{log: log}
+	svc := newServiceMgr(ctx, log.With("proc", "services"), cfg, pr)
+	svc.start()
+	defer svc.stopAll()
+
+	cp, stopControl := startControl(ctx, log, cfg, token, svc, pr)
 	defer stopControl()
 
-	local := &localAPI{log: log.With("proc", "local"), cp: cp}
+	local := &localAPI{log: log.With("proc", "local"), cp: cp, svc: svc, problems: pr}
 	log.Info("listening", "socket", cfg.ControldSocket)
 	if err := local.serve(ctx, cfg.ControldSocket); err != nil {
 		return fmt.Errorf("local socket: %w", err)

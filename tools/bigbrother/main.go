@@ -29,6 +29,8 @@ func commands() []command {
 		{"forward", "<port> [--label L]", "forward a container port to the Mac as devbox:<port>", forwardCmd},
 		{"unforward", "<port>", "remove a forward made by bb forward or auto-forwarding", unforwardCmd},
 		{"ports", "", "list the forwards the Mac holds this session", portsCmd},
+		{"svc", "ls | enable <name> | disable <name>", "list or change the services controld runs", svcCmd},
+		{"status", "[--json]", "what controld runs and what went wrong lately", statusCmd},
 	}
 }
 

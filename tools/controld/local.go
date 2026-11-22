@@ -17,8 +17,10 @@ import (
 // localAPI serves control.v1.Local to bb on controld's unix socket (mode 0600).
 // The caller of each call is identified by the socket's peer credentials.
 type localAPI struct {
-	log *slog.Logger
-	cp  *controlPlane
+	log      *slog.Logger
+	cp       *controlPlane
+	svc      *serviceMgr
+	problems *problems
 }
 
 type requesterKey struct{}
@@ -34,6 +36,10 @@ func (a *localAPI) handler() http.Handler {
 	tetherapp.Handle(s, "/control.v1.Local/Expose", a.expose)
 	tetherapp.Handle(s, "/control.v1.Local/Unexpose", a.unexpose)
 	tetherapp.Handle(s, "/control.v1.Local/ListForwards", a.listForwards)
+	tetherapp.Handle(s, "/control.v1.Local/ListServices", a.listServices)
+	tetherapp.Handle(s, "/control.v1.Local/EnableService", a.enableService)
+	tetherapp.Handle(s, "/control.v1.Local/DisableService", a.disableService)
+	tetherapp.Handle(s, "/control.v1.Local/Status", a.status)
 	return s
 }
 
@@ -88,4 +94,34 @@ func (a *localAPI) unexpose(ctx context.Context, r *controlv1.UnexposeRequest) (
 
 func (a *localAPI) listForwards(ctx context.Context, _ *controlv1.ListForwardsRequest) (*controlv1.ListForwardsResponse, error) {
 	return a.cp.list(ctx)
+}
+
+func (a *localAPI) listServices(context.Context, *controlv1.ListServicesRequest) (*controlv1.ListServicesResponse, error) {
+	return &controlv1.ListServicesResponse{Services: a.svc.list()}, nil
+}
+
+func (a *localAPI) enableService(ctx context.Context, r *controlv1.ServiceRequest) (*controlv1.ServiceStatus, error) {
+	st, err := a.svc.setEnabled(r.Name, true)
+	a.log.Info("service enable", "service", r.Name, "requester_pid", requesterFrom(ctx).GetPid(), "err", err)
+	return st, err
+}
+
+func (a *localAPI) disableService(ctx context.Context, r *controlv1.ServiceRequest) (*controlv1.ServiceStatus, error) {
+	st, err := a.svc.setEnabled(r.Name, false)
+	a.log.Info("service disable", "service", r.Name, "requester_pid", requesterFrom(ctx).GetPid(), "err", err)
+	return st, err
+}
+
+func (a *localAPI) status(ctx context.Context, _ *controlv1.StatusRequest) (*controlv1.StatusResponse, error) {
+	return buildStatus(ctx, a.cp, a.svc, a.problems), nil
+}
+
+// buildStatus is what controld runs and what went wrong lately; it works with no session.
+func buildStatus(ctx context.Context, cp *controlPlane, svc *serviceMgr, pr *problems) *controlv1.StatusResponse {
+	st := &controlv1.StatusResponse{Version: version, ControlRunning: cp != nil, Services: svc.list(), Problems: pr.recent()}
+	if cp != nil {
+		st.Session = gwConnected(ctx, cp.gwSock)
+		st.Pairs = cp.pairs.results()
+	}
+	return st
 }
