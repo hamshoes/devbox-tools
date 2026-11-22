@@ -128,6 +128,8 @@ type Response struct {
 	ID        string `json:"id,omitempty"`
 	// Result carries the payload of expose, unexpose and ports.
 	Result json.RawMessage `json:"result,omitempty"`
+	// Legacy is set when an expose or unexpose used the legacy link because the control plane was down.
+	Legacy bool `json:"legacy,omitempty"`
 }
 
 func SocketPath() string {

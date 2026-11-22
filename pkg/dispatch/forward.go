@@ -20,6 +20,8 @@ const (
 	ActionExpose   = "expose"
 	ActionUnexpose = "unexpose"
 	ActionPorts    = "ports"
+	// ActionListForwards lists the forwards the Mac holds, over the control plane.
+	ActionListForwards = "list_forwards"
 )
 
 // Forward states, as reported by ports and expose.
@@ -173,9 +175,10 @@ func parseExec(e Exec, action string, into any) error {
 // types; Response.Result carries ExposeResult or []PortInfo.
 
 type ExposeArgs struct {
-	Name string `json:"name"`
-	Port int    `json:"port"`
-	Open bool   `json:"open"`
+	Name  string `json:"name"`
+	Port  int    `json:"port"`
+	Open  bool   `json:"open"`
+	Label string `json:"label,omitempty"` // control plane only
 }
 
 // UnexposeArgs names the forward to remove by Name or, if Name is empty, by Port.
@@ -189,6 +192,9 @@ type ExposeResult struct {
 	VMPort  int    `json:"vm_port"`
 	MacPort int    `json:"mac_port"`
 	State   string `json:"state"`
+	// Set when the forward went through the control plane.
+	Addrs []string `json:"addrs,omitempty"`
+	Label string   `json:"label,omitempty"`
 }
 
 type PortInfo struct {

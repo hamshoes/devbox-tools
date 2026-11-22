@@ -405,3 +405,17 @@ func (f *forwards) watch(ctx context.Context) {
 }
 
 func friendly(err error) string { return strings.TrimPrefix(err.Error(), "dispatch: ") }
+
+// hostIP is the container IP the Mac forwards to, looked up again if startup could not find it.
+func (f *forwards) hostIP() (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ip == "" {
+		ip, err := containerIP()
+		if err != nil {
+			return "", err
+		}
+		f.ip = ip
+	}
+	return f.ip, nil
+}

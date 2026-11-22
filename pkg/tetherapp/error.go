@@ -12,13 +12,15 @@ import (
 
 // Connect error codes used by the gateway protocol.
 const (
-	CodeInvalidArgument  = "invalid_argument"
-	CodePermissionDenied = "permission_denied"
-	CodeUnimplemented    = "unimplemented"
-	CodeUnavailable      = "unavailable"
-	CodeDeadlineExceeded = "deadline_exceeded"
-	CodeInternal         = "internal"
-	CodeCanceled         = "canceled"
+	CodeInvalidArgument    = "invalid_argument"
+	CodePermissionDenied   = "permission_denied"
+	CodeUnimplemented      = "unimplemented"
+	CodeUnavailable        = "unavailable"
+	CodeDeadlineExceeded   = "deadline_exceeded"
+	CodeInternal           = "internal"
+	CodeCanceled           = "canceled"
+	CodeFailedPrecondition = "failed_precondition"
+	CodeResourceExhausted  = "resource_exhausted"
 )
 
 // MaxBody is the largest request or response body, in bytes.
@@ -40,8 +42,10 @@ func Errorf(code, format string, args ...any) *Error {
 // HTTPStatus is the status a code travels with. Unknown codes are 500.
 func HTTPStatus(code string) int {
 	switch code {
-	case CodeInvalidArgument:
+	case CodeInvalidArgument, CodeFailedPrecondition:
 		return http.StatusBadRequest
+	case CodeResourceExhausted:
+		return http.StatusTooManyRequests
 	case CodePermissionDenied:
 		return http.StatusForbidden
 	case CodeUnimplemented:

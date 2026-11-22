@@ -10,10 +10,16 @@ import (
 	"strings"
 )
 
-// listenPorts maps every TCP port in LISTEN state to whether it is reachable
-// from outside loopback (bound to anything but 127.0.0.0/8 or ::1).
-func listenPorts() (map[int]bool, error) {
-	out := map[int]bool{}
+// listenRow is one TCP socket in LISTEN state.
+type listenRow struct {
+	ip    net.IP
+	port  int
+	inode uint64
+}
+
+// procListeners reads every TCP socket in LISTEN state from /proc/net/tcp and /proc/net/tcp6.
+func procListeners() ([]listenRow, error) {
+	var out []listenRow
 	readAny := false
 	for _, p := range []string{"/proc/net/tcp", "/proc/net/tcp6"} {
 		f, err := os.Open(p)
@@ -25,7 +31,7 @@ func listenPorts() (map[int]bool, error) {
 		sc.Scan() // header
 		for sc.Scan() {
 			fields := strings.Fields(sc.Text())
-			if len(fields) < 4 || fields[3] != "0A" {
+			if len(fields) < 10 || fields[3] != "0A" {
 				continue
 			}
 			addr, portHex, ok := strings.Cut(fields[1], ":")
@@ -40,12 +46,27 @@ func listenPorts() (map[int]bool, error) {
 			if ip == nil {
 				continue
 			}
-			out[int(port)] = out[int(port)] || !ip.IsLoopback()
+			inode, _ := strconv.ParseUint(fields[9], 10, 64)
+			out = append(out, listenRow{ip: ip, port: int(port), inode: inode})
 		}
 		f.Close()
 	}
 	if !readAny {
 		return nil, errors.New("cannot read /proc/net/tcp")
+	}
+	return out, nil
+}
+
+// listenPorts maps every TCP port in LISTEN state to whether it is reachable
+// from outside loopback (bound to anything but 127.0.0.0/8 or ::1).
+func listenPorts() (map[int]bool, error) {
+	rows, err := procListeners()
+	if err != nil {
+		return nil, err
+	}
+	out := map[int]bool{}
+	for _, r := range rows {
+		out[r.port] = out[r.port] || !r.ip.IsLoopback()
 	}
 	return out, nil
 }

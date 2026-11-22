@@ -61,12 +61,13 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	dispatcherPort := envPort("DISPATCHER_PORT", dispatch.DispatcherPort)
 	fwd := newForwards(log)
 	router := tether.NewRouter(log)
 	tether.On(router, fwd.onReady)
 	tether.On(router, fwd.onFailed)
 	peer, err := tether.Listen(ctx, tether.ServerConfig{
-		Addr:  fmt.Sprintf("0.0.0.0:%d", dispatch.DispatcherPort),
+		Addr:  fmt.Sprintf("0.0.0.0:%d", dispatcherPort),
 		Path:  dispatch.TetherPath,
 		Token: token,
 	}, router, log)
@@ -93,8 +94,9 @@ func run() error {
 	if err := os.Chmod(sock, 0o600); err != nil {
 		return err
 	}
-	log.Info("listening", "port", dispatch.DispatcherPort, "socket", sock)
-	defer startControl(ctx, log, peer, fwd.ip, token)()
+	log.Info("listening", "port", dispatcherPort, "socket", sock)
+	cp, stopControl := startControl(ctx, log, peer, fwd.hostIP, token)
+	defer stopControl()
 
 	go func() {
 		<-ctx.Done()
@@ -109,7 +111,7 @@ func run() error {
 			}
 			return err
 		}
-		go serve(conn, peer, fwd, log)
+		go serve(conn, peer, fwd, cp, log)
 	}
 }
 
@@ -144,7 +146,7 @@ func loadToken() string {
 	return ""
 }
 
-func serve(conn net.Conn, peer tether.Peer, fwd *forwards, log *slog.Logger) {
+func serve(conn net.Conn, peer tether.Peer, fwd *forwards, cp *controlPlane, log *slog.Logger) {
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(readDeadline))
 	var req dispatch.Request
@@ -154,7 +156,7 @@ func serve(conn net.Conn, peer tether.Peer, fwd *forwards, log *slog.Logger) {
 	}
 	// expose can block for replyWait before it answers.
 	conn.SetDeadline(time.Now().Add(replyWait + readDeadline))
-	resp := handle(req, peer, fwd, log)
+	resp := handle(req, requesterOf(conn), peer, fwd, cp, log)
 	reply(conn, resp)
 }
 
@@ -162,32 +164,71 @@ func reply(conn net.Conn, resp dispatch.Response) {
 	json.NewEncoder(conn).Encode(resp)
 }
 
-func handle(req dispatch.Request, peer tether.Peer, fwd *forwards, log *slog.Logger) dispatch.Response {
+func handle(req dispatch.Request, rq *dispatch.Requester, peer tether.Peer, fwd *forwards, cp *controlPlane, log *slog.Logger) dispatch.Response {
+	ctx := context.Background()
 	switch req.Action {
 	case dispatch.ActionExpose:
 		var a dispatch.ExposeArgs
 		if err := json.Unmarshal(req.Args, &a); err != nil {
 			return dispatch.Response{Error: "bad args"}
 		}
+		if cp.up(ctx) {
+			res, err := cp.expose(ctx, a, rq)
+			if err == nil {
+				log.Info("request", "action", req.Action, "via", "control", "port", a.Port, "requester_pid", rqPID(rq))
+				return resultResponse(res)
+			}
+			if !controlUnavailable(err) {
+				log.Info("request", "action", req.Action, "via", "control", "rejected", err)
+				return dispatch.Response{Error: controlMessage(err)}
+			}
+		}
 		res, err := fwd.expose(a)
 		if err != nil {
 			log.Info("request", "action", req.Action, "rejected", err)
-			return dispatch.Response{Error: friendly(err)}
+			return dispatch.Response{Error: friendly(err), Legacy: true}
 		}
-		return resultResponse(res)
+		resp := resultResponse(res)
+		resp.Legacy = true
+		return resp
 
 	case dispatch.ActionUnexpose:
 		var a dispatch.UnexposeArgs
 		if err := json.Unmarshal(req.Args, &a); err != nil || (a.Name == "" && a.Port == 0) {
 			return dispatch.Response{Error: "bad args"}
 		}
-		if err := fwd.unexpose(a); err != nil {
-			return dispatch.Response{Error: err.Error()}
+		if cp.up(ctx) {
+			if a.Port == 0 {
+				return dispatch.Response{Error: "unexpose takes a port"}
+			}
+			err := cp.unexpose(ctx, a.Port, rq)
+			if err == nil {
+				log.Info("request", "action", req.Action, "via", "control", "port", a.Port, "requester_pid", rqPID(rq))
+				return resultResponse(struct{}{})
+			}
+			if !controlUnavailable(err) {
+				return dispatch.Response{Error: controlMessage(err)}
+			}
 		}
-		return resultResponse(struct{}{})
+		if err := fwd.unexpose(a); err != nil {
+			return dispatch.Response{Error: err.Error(), Legacy: true}
+		}
+		resp := resultResponse(struct{}{})
+		resp.Legacy = true
+		return resp
 
 	case dispatch.ActionPorts:
 		return resultResponse(fwd.ports())
+
+	case dispatch.ActionListForwards:
+		if !cp.up(ctx) {
+			return dispatch.Response{OK: true, Error: dispatch.ErrControlDown}
+		}
+		list, err := cp.list(ctx)
+		if err != nil {
+			return dispatch.Response{Error: controlMessage(err)}
+		}
+		return resultResponse(list)
 
 	case dispatch.ActionStatus:
 		return dispatch.Response{OK: true, Delivered: peer.State() == tether.Open}
@@ -234,6 +275,13 @@ func handle(req dispatch.Request, peer tether.Peer, fwd *forwards, log *slog.Log
 	}
 	log.Info("request", "action", "unknown")
 	return dispatch.Response{Error: "unknown action"}
+}
+
+func rqPID(rq *dispatch.Requester) int32 {
+	if rq == nil {
+		return 0
+	}
+	return rq.PID
 }
 
 func openURLArg(req dispatch.Request) string {
