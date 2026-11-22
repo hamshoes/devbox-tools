@@ -4,11 +4,11 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/hamshoes/devbox-tools/pkg/dispatch"
+	controlv1 "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1"
 )
 
-// requesterOf identifies the process on the other end of a local dispatcher socket connection.
-func requesterOf(c net.Conn) *dispatch.Requester {
+// requesterOf identifies the process on the other end of a local socket connection, from SO_PEERCRED.
+func requesterOf(c net.Conn) *controlv1.Requester {
 	uc, ok := c.(*net.UnixConn)
 	if !ok {
 		return nil
@@ -24,5 +24,5 @@ func requesterOf(c net.Conn) *dispatch.Requester {
 	if cred == nil {
 		return nil
 	}
-	return &dispatch.Requester{UID: cred.Uid, PID: cred.Pid, Cmd: procCmd(cred.Pid)}
+	return &controlv1.Requester{Uid: cred.Uid, Pid: cred.Pid, Cmd: procCmd(cred.Pid)}
 }

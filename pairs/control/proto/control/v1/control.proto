@@ -11,17 +11,16 @@
 //   It runs as the tether pair `control`: the VM gateway is on
 //   DEVBOX_CONTROL_PORT (published on VM loopback), the Mac gateway is dialled through an ssh
 //   unix-socket forward, and the token is DISPATCH_TOKEN.
-//   Mac side = `dev`. VM side = the dispatcher.
+//   Mac side = `dev`. VM side = controld.
 //
 // RULES
 //   1. The Mac is in charge. Mac → VM calls declare desired state;
 //      VM → Mac calls are requests that `dev` carries out.
 //   2. One user, full access. Being authenticated from Sam's machines is the
-//      security boundary. No roles, no policy engine. (The legacy exec
-//      allowlist goes away when the dispatch link is retired.)
+//      security boundary. No roles, no policy engine.
 //   3. Who's asking travels with requests. tether-gw stamps the caller's
-//      SO_PEERCRED (uid, pid) on every call. For control, the dispatcher
-//      also puts the ORIGINAL requester (e.g. the `dispatch expose` process)
+//      SO_PEERCRED (uid, pid) on every call. For control, controld
+//      also puts the ORIGINAL requester (e.g. the `bb forward` process)
 //      into the request, so forwards are labelled and attributed per instance.
 //   4. Session-scoped. Everything here is released when the session ends or
 //      after 30s without the control connection.
@@ -48,7 +47,7 @@
 //   v0.1  Control.ApplyPairs, Control.Health, ControlEvents.PairStatus,
 //         ControlEvents.Health   ← being built (G1–G3, H1–H2)
 //   v0.2  Forwards.Expose/Unexpose/ListForwards, ControlEvents.PortsChanged,
-//         tether-gw caller stamping. Retires the legacy `forward_port`.
+//         tether-gw caller stamping.
 // ─────────────────────────────────────────────────────────────────────────────
 
 syntax = "proto3";
@@ -108,9 +107,9 @@ service ControlEvents {
   rpc Health(HealthRequest) returns (HealthResponse);
 
   // Since: v0.2. Listening TCP sockets in the container changed.
-  // The dispatcher polls every 2s and debounces changes over 1s.
+  // controld polls every 2s and debounces changes over 1s.
   // With `snapshot = true`, `opened` is the complete current list and `dev`
-  // replaces what it knew. The dispatcher sends a snapshot on every
+  // replaces what it knew. controld sends a snapshot on every
   // (re)connect, so no List call is needed.
   // What `dev` does is set by [control.ports] auto = "ask" | "on" | "off":
   //   ask → notification "vite on :5173, forward?"; clicking it exposes
@@ -143,7 +142,7 @@ message Listener {
 }
 
 service Forwards {
-  // Since: v0.2. Replaces the legacy `forward_port` / `dispatch expose`.
+  // Since: v0.2. Backs `bb forward`.
   // `dev` runs `ssh -O forward -L 127.0.0.2:<port>:<target_host>:<port>`
   // (and the localhost equivalent) on its ControlMaster, using the same port
   // on the Mac so devbox:<port> stays the same name.
@@ -157,12 +156,27 @@ service Forwards {
   rpc Unexpose(UnexposeRequest) returns (UnexposeResponse);
 
   // Since: v0.2. Every forward `dev` holds this session: config, expose and
-  // auto. Backs `dispatch ports` and `dev tether status`.
+  // auto. Backs `bb ports` and `dev tether status`.
   rpc ListForwards(ListForwardsRequest) returns (ListForwardsResponse);
 }
 
-// The process that originally asked, filled in by the dispatcher from the
-// SO_PEERCRED of its local socket (not the dispatcher itself, which is the
+// ═════════════════════════════════════════════════════════════════════════════
+// Local: controld's own unix socket (DEVBOX_CONTROLD_SOCKET), for `bb`
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Never listed in manifest.json, so the gateways never carry it. controld
+// fills each request's Requester from the socket's SO_PEERCRED (any value
+// the caller sends is replaced) and the target host itself, then calls the
+// Forwards service above. With no session (the Mac is not connected) every
+// call fails with unavailable.
+service Local {
+  rpc Expose(ExposeRequest) returns (Forward);
+  rpc Unexpose(UnexposeRequest) returns (UnexposeResponse);
+  rpc ListForwards(ListForwardsRequest) returns (ListForwardsResponse);
+}
+
+// The process that originally asked, filled in by controld from the
+// SO_PEERCRED of its local socket (not controld itself, which is the
 // gateway's caller).
 message Requester {
   uint32 uid = 1;
@@ -172,7 +186,7 @@ message Requester {
 
 message ExposeRequest {
   uint32    port        = 1;  // container port; the Mac uses the same port
-  string    target_host = 2;  // container IP (the dispatcher knows it)
+  string    target_host = 2;  // container IP (controld knows it)
   string    label       = 3;  // optional ("vite", "api"); shown in lists and notifications
   Requester requester   = 4;
 }

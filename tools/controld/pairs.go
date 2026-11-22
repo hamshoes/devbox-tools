@@ -16,9 +16,7 @@ import (
 	"time"
 
 	controlv1 "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1"
-	"github.com/hamshoes/devbox-tools/pkg/dispatch"
 	"github.com/hamshoes/devbox-tools/pkg/platform"
-	"github.com/hamshoes/devbox-tools/pkg/tether"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 )
 
@@ -35,7 +33,7 @@ var (
 	versionRE   = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 )
 
-// packaged is the part of a pair's manifest.json the dispatcher reads.
+// packaged is the part of a pair's manifest.json controld reads.
 type packaged struct {
 	Pair    string `json:"pair"`
 	Version string `json:"version"`
@@ -60,7 +58,6 @@ type runningPair struct {
 type pairMgr struct {
 	log     *slog.Logger
 	cfg     *platform.Config
-	peer    tether.Peer // the old dispatch link, for notify
 	host    string
 	gwBin   string
 	root    string // installed pairs
@@ -305,14 +302,11 @@ func (m *pairMgr) recordExit(p *runningPair) bool {
 	return true
 }
 
-// giveUp stops a crash-looping pair and tells the Mac, through both channels.
+// giveUp stops a crash-looping pair and tells the Mac.
 func (m *pairMgr) giveUp(p *runningPair, msg string) {
 	p.cancel()
 	m.log.Error("pair failed", "pair", p.name, "version", p.version, "port", p.port, "state", "failed", "err", msg)
 	m.report(&controlv1.PairResult{Name: p.name, State: "failed", Error: msg, Host: m.host, VmPort: p.port, Version: p.version})
-	if exec, err := dispatch.NewNotify(dispatch.NotifyArgs{Title: "tether " + p.name + " failed", Message: msg}); err == nil {
-		deliver(dispatch.ActionNotify, exec, m.peer, m.log, "pair", p.name)
-	}
 }
 
 // report sends PairStatus over the control gateway.

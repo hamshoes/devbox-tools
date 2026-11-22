@@ -57,20 +57,6 @@ func procListeners() ([]listenRow, error) {
 	return out, nil
 }
 
-// listenPorts maps every TCP port in LISTEN state to whether it is reachable
-// from outside loopback (bound to anything but 127.0.0.0/8 or ::1).
-func listenPorts() (map[int]bool, error) {
-	rows, err := procListeners()
-	if err != nil {
-		return nil, err
-	}
-	out := map[int]bool{}
-	for _, r := range rows {
-		out[r.port] = out[r.port] || !r.ip.IsLoopback()
-	}
-	return out, nil
-}
-
 // parseProcIP decodes /proc/net/tcp addresses: each 32-bit word is printed in host (little-endian) order.
 func parseProcIP(s string) net.IP {
 	b, err := hex.DecodeString(s)

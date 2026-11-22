@@ -10,17 +10,15 @@ import (
 	"time"
 
 	controlv1 "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1"
-	"github.com/hamshoes/devbox-tools/pkg/dispatch"
 	"github.com/hamshoes/devbox-tools/pkg/platform"
-	"github.com/hamshoes/devbox-tools/pkg/tether"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 )
 
-// startControl runs the control plane next to everything else the dispatcher
-// does: a supervised control gateway, and the Control service behind it. It does
-// nothing, and says so, if tether-gw or the control pair is not installed. The
-// returned func stops everything and waits.
-func startControl(parent context.Context, log *slog.Logger, cfg *platform.Config, peer tether.Peer, host func() (string, error), token string) (*controlPlane, func()) {
+// startControl runs the control plane: a supervised control gateway, the
+// Control service behind it, the pair manager and the port watcher. It does
+// nothing, and says so, if tether-gw or the control pair is not installed; the
+// returned *controlPlane is then nil. The returned func stops everything and waits.
+func startControl(parent context.Context, log *slog.Logger, cfg *platform.Config, token string) (*controlPlane, func()) {
 	root := filepath.Join(cfg.DevtoolsDir, "pairs")
 	state := cfg.TetherStateDir
 	gwBin := findBin(cfg, "tether-gw")
@@ -43,13 +41,15 @@ func startControl(parent context.Context, log *slog.Logger, cfg *platform.Config
 		log.Warn("control plane disabled", "err", err)
 		return nil, func() {}
 	}
-	controlPort := cfg.ControlPort
 	gwSock, appSock := filepath.Join(cdir, "gw.sock"), filepath.Join(cdir, "app.sock")
 
-	ip, _ := host()
+	ip, err := containerIP()
+	if err != nil {
+		log.Warn("container ip", "err", err)
+	}
 	ctx, cancel := context.WithCancel(parent)
 	mgr := &pairMgr{
-		log: log, cfg: cfg, peer: peer, host: ip, gwBin: gwBin, root: root, state: state,
+		log: log, cfg: cfg, host: ip, gwBin: gwBin, root: root, state: state,
 		control: gwSock, ctx: ctx, pairs: map[string]*runningPair{},
 	}
 
@@ -57,7 +57,7 @@ func startControl(parent context.Context, log *slog.Logger, cfg *platform.Config
 	exits := 0
 	gw := &supervised{
 		log: log.With("proc", "control-gw"), logf: filepath.Join(cdir, "gw.log"), env: childEnv(),
-		argv: []string{gwBin, "--side", "vm", "--pair-dir", dir, "--listen", fmt.Sprintf("0.0.0.0:%d", controlPort),
+		argv: []string{gwBin, "--side", "vm", "--pair-dir", dir, "--listen", fmt.Sprintf("0.0.0.0:%d", cfg.ControlPort),
 			"--token-file", tokenFile, "--gw-socket", gwSock, "--app-socket", appSock},
 		onExit: func() bool {
 			if exits++; exits%crashLimit == 0 {
@@ -79,12 +79,12 @@ func startControl(parent context.Context, log *slog.Logger, cfg *platform.Config
 		}
 	})
 	wg.Go(func() { mgr.watchControl(ctx) })
-	watcher := &portWatcher{log: log.With("proc", "ports"), cfg: cfg, gwSock: gwSock, own: map[int]bool{dispatch.DispatcherPort: true}}
+	watcher := &portWatcher{log: log.With("proc", "ports"), cfg: cfg, gwSock: gwSock}
 	wg.Go(func() { watcher.run(ctx) })
-	log.Info("control plane", "port", controlPort, "pair_dir", dir, "gateway", gwBin)
+	log.Info("control plane", "port", cfg.ControlPort, "pair_dir", dir, "gateway", gwBin)
 
-	return &controlPlane{cfg: cfg, gwSock: gwSock, host: host}, func() {
-		mgr.stopAll("dispatcher shutting down")
+	return &controlPlane{cfg: cfg, gwSock: gwSock, ip: ip}, func() {
+		mgr.stopAll("controld shutting down")
 		cancel()
 		wg.Wait()
 	}

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/hamshoes/devbox-tools/pkg/dispatch"
 )
 
 const (
@@ -29,11 +27,11 @@ type supervised struct {
 	onExit func() bool
 }
 
-// childEnv is the dispatcher's environment minus its own token, plus extra.
+// childEnv is controld's environment minus its own token, plus extra.
 func childEnv(extra ...string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, dispatch.TokenEnv+"=") {
+		if strings.HasPrefix(kv, tokenEnv+"=") {
 			continue
 		}
 		env = append(env, kv)

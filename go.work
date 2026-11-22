@@ -2,15 +2,14 @@ go 1.27.1
 
 use (
 	./pkg/tether
-	./pkg/dispatch
 	./pkg/tetherapp
 	./pkg/platform
 	./pairs/control
 	./pairs/desk
 	./pairs/ping
-	./tools/dispatcher
+	./tools/controld
 	./tools/agentic
-	./tools/dispatch
+	./tools/bigbrother
 	./tools/tether-gw
 	./tools/tetherping
 	./tools/proj

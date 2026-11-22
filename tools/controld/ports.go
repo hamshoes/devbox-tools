@@ -28,7 +28,6 @@ type portWatcher struct {
 	log    *slog.Logger
 	cfg    *platform.Config
 	gwSock string
-	own    map[int]bool // the dispatcher's own ports, if they differ from the reserved ones
 	owners ownerCache
 }
 
@@ -137,7 +136,7 @@ func (w *portWatcher) scan() (map[int]*controlv1.Listener, error) {
 	best := map[int]listenRow{}
 	loopbackOnly := map[int]bool{}
 	for _, r := range rows {
-		if w.cfg.IsReserved(r.port) || w.own[r.port] {
+		if w.cfg.IsReserved(r.port) {
 			continue
 		}
 		if _, seen := loopbackOnly[r.port]; !seen {

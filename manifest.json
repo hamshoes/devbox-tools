@@ -3,8 +3,8 @@
   "tools": [
     { "name": "proj",    "devbox": true, "init": "zsh" },
     { "name": "scratch", "devbox": true, "init": "zsh" },
-    { "name": "dispatcher", "devbox": true },
-    { "name": "dispatch", "devbox": true },
+    { "name": "controld", "devbox": true },
+    { "name": "bigbrother", "devbox": true },
     { "name": "agentic", "devbox": true },
     { "name": "tether-gw", "devbox": true },
     { "name": "control", "kind": "pair", "devbox": true },

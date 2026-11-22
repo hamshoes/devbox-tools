@@ -21,8 +21,8 @@ It is a Go workspace (`go.work`) of independent modules. Each tool, pair and lib
 | `proj` | Create projects and jump between them |
 | `scratch` | Create and manage throwaway folders |
 | `agentic` | Wrap agent runs: log every Bash command and hold each `git push` for approval on the Mac (see below) |
-| `dispatcher` | Push exec events to the Mac over a tether server, fed by `dispatch` over a unix socket |
-| `dispatch` | Ask the local dispatcher to run an action on the Mac; invoked as `xdg-open`, it opens a URL there |
+| `controld` | The VM half of the control plane: runs the control gateway and the pairs the Mac asks for, watches ports, serves `bb` on a local socket |
+| `bigbrother` (`bb`) | Short-lived client for the control plane and the pairs: `bb forward`, `bb unforward`, `bb ports` |
 | `tether-gw` | Generic gateway for one tether pair on one side: apps call it over a unix socket, and it relays checked calls to its peer gateway |
 | `tetherping` | Example of an optional tool: serves `GET /ping`; not deployed |
 | `unwrapped` | Web dashboard of the VM's status |
@@ -41,7 +41,7 @@ It is a Go workspace (`go.work`) of independent modules. Each tool, pair and lib
 | --- | --- |
 | `pkg/tether` | Typed, fire-and-forget JSON messages over a WebSocket between one server and one client |
 | `pkg/tetherapp` | What a pair app links against: a client for its `tether-gw` and a server for the calls the gateway forwards |
-| `pkg/dispatch` | The exec events and local socket protocol shared by `dispatcher` and `dispatch` |
+| `pkg/platform` | The devbox platform constants (ports, paths, spool), read from the environment, then `/etc/devbox/platform.env` |
 
 ## Restricting agent runs with `agentic`
 
