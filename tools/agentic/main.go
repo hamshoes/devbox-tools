@@ -1,5 +1,5 @@
 // Command agentic wraps agent runs: it logs every Bash command Claude Code runs, and holds each
-// `git push` until it is approved on the Mac (through the desk pair's spool).
+// `git push` until it is approved on the Mac (through the notify pair's spool).
 package main
 
 import (
@@ -30,8 +30,6 @@ func main() {
 			os.Exit(hookPost())
 		}
 		usage()
-	case "ask":
-		os.Exit(askCmd(rest))
 	case "pending":
 		os.Exit(pendingCmd())
 	case "cancel":
@@ -39,6 +37,7 @@ func main() {
 	case "log":
 		os.Exit(logCmd(rest))
 	default:
+		fmt.Fprintf(os.Stderr, "agentic: unknown command %q\n", os.Args[1])
 		usage()
 	}
 }
@@ -46,7 +45,6 @@ func main() {
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   agentic run [--name N] -- <cmd...>
-  agentic ask --title T [--detail D] [--kind generic]
   agentic pending
   agentic cancel <ask_id> | --all | --run <run_id>
   agentic log [--run R] [-f]

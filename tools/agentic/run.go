@@ -12,9 +12,18 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
-const preHookTimeout = 7 * 24 * 60 * 60 // seconds: a push waits as long as Sam takes
+// Claude Code's hooks reference gives command hooks a 600 s default timeout
+// and documents no maximum, and a PreToolUse hook that times out does NOT
+// block the call. So the pre hook is registered with preHookTimeout and
+// decides on its own preHookMargin before that: the gate never ends without
+// a decision.
+const (
+	preHookTimeout = 24 * time.Hour
+	preHookMargin  = time.Minute
+)
 
 // shellQuote makes s safe as one word of the shell command a hook runs.
 func shellQuote(s string) string {
@@ -33,7 +42,7 @@ func claudeSettings(self string) ([]byte, error) {
 		}}}}
 	}
 	return json.MarshalIndent(map[string]any{"hooks": map[string]any{
-		"PreToolUse":         hook("pre", preHookTimeout),
+		"PreToolUse":         hook("pre", int(preHookTimeout/time.Second)),
 		"PostToolUse":        hook("post", 10),
 		"PostToolUseFailure": hook("post", 10),
 	}}, "", "  ")

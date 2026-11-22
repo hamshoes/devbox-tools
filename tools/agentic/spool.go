@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -82,9 +83,11 @@ func (s spool) submit(kind, title, detail, cwd string) (string, time.Time, error
 	return id, at, nil
 }
 
-// wait blocks until the ask is answered or cancelled, however long that takes. Anything but an explicit
-// "allow" comes back as "deny" or "cancelled". A cancel file works without desk-vm running.
-func (s spool) wait(id string, since time.Time) string {
+// wait blocks until the ask is answered or cancelled, or ctx ends (""). Anything but an explicit
+// "allow" comes back as "deny" or "cancelled". A cancel file works without notify-vm running.
+func (s spool) wait(ctx context.Context, id string, since time.Time) string {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
 	for {
 		if raw, err := os.ReadFile(filepath.Join(s.answers, id+".json")); err == nil {
 			var a struct {
@@ -104,75 +107,61 @@ func (s spool) wait(id string, since time.Time) string {
 				return "cancelled"
 			}
 		}
-		time.Sleep(time.Second)
+		select {
+		case <-ctx.Done():
+			return ""
+		case <-t.C:
+		}
 	}
 }
 
+// withdrawWait bounds how long withdraw waits for notify-vm to take a cancel.
+const withdrawWait = 3 * time.Second
+
+// withdraw gives up on an ask: a cancel file makes notify-vm answer it and
+// withdraw the dialog from the Mac; once that is done, or after withdrawWait,
+// the ask file is removed.
+func (s spool) withdraw(id string) {
+	touchCancel(s, id)
+	deadline := time.Now().Add(withdrawWait)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(filepath.Join(s.answers, id+".json")); err == nil {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	os.Remove(filepath.Join(s.asks, id+".json"))
+}
+
+// touchCancel creates or refreshes cancel/<name>; a file already there must look new to the waiters.
+func touchCancel(s spool, name string) error {
+	f, err := os.OpenFile(filepath.Join(s.cancel, name), os.O_WRONLY|os.O_CREATE, 0o660)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	return errors.Join(os.Chmod(f.Name(), 0o660), os.Chtimes(f.Name(), now, now), f.Close())
+}
+
 // ask submits, logs, waits and logs the decision. A spool error is returned with decision "deny".
-func (s spool) ask(kind, title, detail, cwd, shown string) (decision, id string, err error) {
+// If ctx ends first the ask is withdrawn and the decision is "timeout" (deadline) or "cancelled".
+func (s spool) ask(ctx context.Context, kind, title, detail, cwd, shown string) (decision, id string, err error) {
 	id, since, err := s.submit(kind, title, detail, cwd)
 	if err != nil {
 		logEvent(event{Event: "decision", Cwd: cwd, Command: shown, Decision: "deny", Note: "unavailable: " + err.Error()})
 		return "deny", "", err
 	}
 	logEvent(event{Event: "ask", Cwd: cwd, Command: shown, AskID: id})
-	decision = s.wait(id, since)
+	decision = s.wait(ctx, id, since)
+	if decision == "" {
+		s.withdraw(id)
+		decision = "cancelled"
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			decision = "timeout"
+		}
+	}
 	logEvent(event{Event: "decision", AskID: id, Decision: decision})
 	return decision, id, nil
-}
-
-// ---- agentic ask ----
-
-func askCmd(args []string) int {
-	var title, detail string
-	kind := "generic"
-	bad := false
-	for i := 0; i < len(args); i++ {
-		val := func() string {
-			if i+1 < len(args) {
-				i++
-				return args[i]
-			}
-			return ""
-		}
-		switch a := args[i]; {
-		case a == "--title":
-			title = val()
-		case a == "--detail":
-			detail = val()
-		case a == "--kind":
-			kind = val()
-		case strings.HasPrefix(a, "--title="):
-			title = strings.TrimPrefix(a, "--title=")
-		case strings.HasPrefix(a, "--detail="):
-			detail = strings.TrimPrefix(a, "--detail=")
-		case strings.HasPrefix(a, "--kind="):
-			kind = strings.TrimPrefix(a, "--kind=")
-		default:
-			bad = true
-		}
-	}
-	if bad || title == "" || (kind != "generic" && kind != "git-push") {
-		fmt.Fprintln(os.Stderr, "usage: agentic ask --title T [--detail D] [--kind generic]")
-		return 2
-	}
-	cwd, _ := os.Getwd()
-	s, err := openSpool()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "agentic:", err)
-		logEvent(event{Event: "decision", Cwd: cwd, Command: title, Decision: "deny", Note: "unavailable: " + err.Error()})
-		return 2
-	}
-	decision, _, err := s.ask(kind, title, detail, cwd, title)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "agentic:", err)
-		return 2
-	}
-	fmt.Println(decision)
-	if decision == "allow" {
-		return 0
-	}
-	return 1
 }
 
 // ---- agentic pending / cancel ----
@@ -258,14 +247,7 @@ func cancelCmd(args []string) int {
 		fmt.Fprintln(os.Stderr, "agentic:", err)
 		return 1
 	}
-	touch := func(name string) error {
-		f, err := os.OpenFile(filepath.Join(s.cancel, name), os.O_WRONLY|os.O_CREATE, 0o660)
-		if err != nil {
-			return err
-		}
-		now := time.Now() // a file already there must look new to the hooks waiting on it
-		return errors.Join(os.Chmod(f.Name(), 0o660), os.Chtimes(f.Name(), now, now), f.Close())
-	}
+	touch := func(name string) error { return touchCancel(s, name) }
 	var ids []string
 	switch {
 	case args[0] == "--all" && len(args) == 1:
