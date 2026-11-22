@@ -9,7 +9,6 @@ use (
 	./pairs/open
 	./pairs/clip
 	./pairs/send
-	./pairs/ping
 	./tools/controld
 	./tools/agentic
 	./tools/bigbrother
@@ -17,5 +16,4 @@ use (
 	./tools/tetherping
 	./tools/proj
 	./tools/scratch
-	./tools/unwrapped
 )

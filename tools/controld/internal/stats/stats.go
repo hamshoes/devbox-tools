@@ -38,7 +38,7 @@ type HomeStats struct {
 	Measuring  bool      `json:"measuring"`
 }
 
-// Snapshot is the JSON served by /api/stats.
+// Snapshot is the VM part of the JSON served by /api/status.
 type Snapshot struct {
 	Version  string    `json:"version"`
 	Hostname string    `json:"hostname"`
@@ -54,6 +54,7 @@ type Snapshot struct {
 
 // Config sets what a Collector measures and how often.
 type Config struct {
+	Log          *slog.Logger
 	Version      string
 	Home         string
 	CPUInterval  time.Duration
@@ -90,7 +91,7 @@ func (c *Collector) Wait() { c.wg.Wait() }
 func (c *Collector) sampleCPU(ctx context.Context) {
 	idle, total, cores, err := readCPU()
 	if err != nil {
-		slog.Error("cpu sampler stopped", "err", err)
+		c.cfg.Log.Warn("cpu sampler stopped", "err", err)
 		return
 	}
 	c.mu.Lock()

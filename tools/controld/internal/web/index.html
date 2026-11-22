@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>unwrapped</title>
+<title>devbox</title>
 <style>
 :root {
   --bg: #f5f6f8; --card: #fff; --fg: #1c2024; --muted: #6a7480; --line: #e2e5ea;
@@ -34,19 +34,42 @@ table { width: 100%; border-collapse: collapse; margin-top: 4px; }
 th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 500; font-size: 12px; }
 .clients { margin-top: 12px; }
+.bad { color: var(--warn); }
+code { font: 12px ui-monospace, monospace; }
 footer { margin-top: 16px; color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>
-<header><h1>unwrapped</h1><span class="host" id="host"></span><span id="badge">disconnected</span></header>
+<header><h1>devbox</h1><span class="host" id="host"></span><span id="badge">disconnected</span></header>
 
 <div class="grid">
-  <div class="card"><h2>Running for</h2><div class="big" id="running">–</div><div class="sub" id="boot"></div></div>
+  <div class="card"><h2>Uptime</h2><div class="big" id="running">–</div><div class="sub" id="boot"></div></div>
   <div class="card"><h2>Home volume</h2><div class="big" id="home-size">measuring…</div><div class="sub" id="home-meta"></div><ul id="home-top"></ul></div>
   <div class="card"><h2>Disk</h2><div class="big" id="disk-pct">–</div><div class="sub" id="disk-sub"></div><div class="bar"><div id="disk-bar"></div></div></div>
   <div class="card"><h2>CPU</h2><div class="big" id="cpu-pct">–</div><div class="sub" id="cpu-sub"></div>
     <svg viewBox="0 0 300 100" preserveAspectRatio="none"><polyline id="cpu-line" points=""/></svg></div>
   <div class="card"><h2>Memory</h2><div class="big" id="mem-pct">–</div><div class="sub" id="mem-sub"></div><div class="bar"><div id="mem-bar"></div></div></div>
+</div>
+
+<div class="card clients">
+  <h2>Services</h2>
+  <table>
+    <thead><tr><th>name</th><th>source</th><th>state</th><th>command</th></tr></thead>
+    <tbody id="services"></tbody>
+  </table>
+</div>
+
+<div class="card clients">
+  <h2>Pairs <span class="sub" id="session"></span></h2>
+  <table>
+    <thead><tr><th>pair</th><th>version</th><th>port</th><th>state</th></tr></thead>
+    <tbody id="pairs"></tbody>
+  </table>
+</div>
+
+<div class="card clients">
+  <h2>Recent problems</h2>
+  <ul id="problems"></ul>
 </div>
 
 <div class="card clients">
@@ -79,6 +102,43 @@ function dur(ms) {
 }
 const ago = (t, now) => dur(now - new Date(t)) + ' ago';
 const pct = n => n.toFixed(1) + '%';
+
+// row builds a table row; every value goes in as text, never as HTML.
+function row(values, cls) {
+  const tr = document.createElement('tr');
+  for (const v of values) {
+    const td = document.createElement('td');
+    td.textContent = v;
+    tr.append(td);
+  }
+  if (cls) tr.className = cls;
+  return tr;
+}
+function rowsOr(rows, cols, empty) {
+  return rows.length ? rows : [(() => { const r = row([empty]); r.firstChild.colSpan = cols; return r; })()];
+}
+
+function renderControl(c, lockSHA, sync) {
+  $('services').replaceChildren(...rowsOr((c.services || []).map(v => row(
+    [v.name, v.source, v.state + (v.error ? ': ' + v.error : ''), [v.tool, ...(v.args || [])].join(' ')],
+    v.state === 'running' || v.state === 'disabled' ? '' : 'bad')), 4, 'No services'));
+  $('session').textContent = c.session ? '· session connected' : '· no session';
+  $('pairs').replaceChildren(...rowsOr((c.pairs || []).map(v => row(
+    [v.name, v.version, String(v.vm_port), v.state + (v.error ? ': ' + v.error : '')], v.state === 'started' ? '' : 'bad')), 4, 'No pairs this session'));
+  const probs = (c.problems || []).slice().reverse().map(p => {
+    const li = document.createElement('li');
+    const a = document.createElement('span'), b = document.createElement('span');
+    a.textContent = p.source + ': ' + p.message; b.textContent = new Date(p.at).toLocaleString();
+    li.append(a, b);
+    return li;
+  });
+  if (!probs.length) { const li = document.createElement('li'); li.textContent = 'None'; probs.push(li); }
+  $('problems').replaceChildren(...probs);
+
+  let syncText = 'sync: unknown';
+  if (sync) syncText = sync.ok ? 'sync ok' : 'sync failed' + (sync.error ? ': ' + sync.error : '');
+  $('footer').textContent = 'controld ' + c.version + ' · lock ' + (lockSHA ? lockSHA.slice(0, 12) : 'unknown') + ' · ' + syncText;
+}
 
 function render(s) {
   const now = new Date(s.now);
@@ -130,15 +190,15 @@ function render(s) {
     tr.append(td); rows.push(tr);
   }
   $('clients').replaceChildren(...rows);
-
-  $('footer').textContent = 'unwrapped ' + s.version;
 }
 
 async function tick() {
   try {
-    const r = await fetch('/api/stats', { cache: 'no-store' });
+    const r = await fetch('/api/status', { cache: 'no-store' });
     if (!r.ok) throw new Error(r.status);
-    render(await r.json());
+    const d = await r.json();
+    render(d.stats);
+    renderControl(d.controld, d.lock_sha, d.sync);
     $('badge').style.display = 'none';
   } catch (e) {
     $('badge').style.display = 'inline-block';

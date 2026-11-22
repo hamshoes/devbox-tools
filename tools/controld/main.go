@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 
+	controlv1 "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1"
 	"github.com/hamshoes/devbox-tools/pkg/platform"
 )
 
@@ -81,6 +82,18 @@ func run() error {
 
 	cp, stopControl := startControl(ctx, log, cfg, token, svc, pr)
 	defer stopControl()
+
+	pageDone := make(chan struct{})
+	go func() {
+		defer close(pageDone)
+		servePage(ctx, log.With("proc", "web"), cfg, pr, func(ctx context.Context) *controlv1.StatusResponse {
+			return buildStatus(ctx, cp, svc, pr)
+		})
+	}()
+	defer func() {
+		stop() // the page runs until ctx ends, also when the local socket fails first
+		<-pageDone
+	}()
 
 	local := &localAPI{log: log.With("proc", "local"), cp: cp, svc: svc, problems: pr}
 	log.Info("listening", "socket", cfg.ControldSocket)
