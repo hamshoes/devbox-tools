@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -123,9 +125,24 @@ func (s *Server) Serve(ctx context.Context, appSocket string) error {
 	return err
 }
 
-// ListenUnix replaces any stale socket at path with a fresh listener, mode 0600.
+// ErrInUse is returned by ListenUnix when something is already accepting
+// connections on the socket.
+var ErrInUse = errors.New("socket already in use")
+
+// dialTimeout bounds the liveness check in ListenUnix.
+const dialTimeout = time.Second
+
+// ListenUnix listens on the unix socket path, mode 0600. A stale file at path
+// (a socket nobody accepts on, or something that is not a socket) is removed
+// first. A live socket is left alone and ListenUnix fails with ErrInUse, so a
+// second copy of a program can never take over (and later delete) the first
+// one's socket. When it cannot tell, it also fails and removes nothing.
 func ListenUnix(path string) (net.Listener, error) {
-	os.Remove(path)
+	if err := removeStale(path); err != nil {
+		return nil, err
+	}
+	// net.Listen never replaces an existing file, so a socket that appeared
+	// since the check makes this fail with "address already in use".
 	ln, err := net.Listen("unix", path)
 	if err != nil {
 		return nil, err
@@ -135,6 +152,37 @@ func ListenUnix(path string) (net.Listener, error) {
 		return nil, err
 	}
 	return ln, nil
+}
+
+// removeStale removes path unless it is a socket something accepts on.
+func removeStale(path string) error {
+	fi, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return err
+	case fi.IsDir():
+		return fmt.Errorf("%s is a directory", path)
+	case fi.Mode().Type() == fs.ModeSocket:
+		c, err := net.DialTimeout("unix", path, dialTimeout)
+		switch {
+		case err == nil:
+			c.Close()
+			return fmt.Errorf("%s: %w", path, ErrInUse)
+		case errors.Is(err, syscall.EAGAIN):
+			// The listener's backlog is full: alive, just busy.
+			return fmt.Errorf("%s: %w", path, ErrInUse)
+		case errors.Is(err, fs.ErrNotExist):
+			return nil // removed since the Lstat
+		case !errors.Is(err, syscall.ECONNREFUSED):
+			return fmt.Errorf("%s: cannot tell whether the socket is in use: %w", path, err)
+		}
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("remove stale %s: %w", path, err)
+	}
+	return nil
 }
 
 // FromEnv reads the contract a pair app is started with.

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -26,23 +27,59 @@ var version = "dev"
 const tokenEnv = "DISPATCH_TOKEN"
 
 func main() {
-	if err := run(); err != nil {
+	opts, err := parseArgs(os.Args[1:], os.Stdout, os.Stderr)
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		return
+	case err != nil:
+		fmt.Fprintln(os.Stderr, "controld:", err)
+		os.Exit(2)
+	case opts.version:
+		fmt.Println(version)
+		return
+	}
+	if err := run(opts); err != nil {
 		fmt.Fprintln(os.Stderr, "controld:", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	debug := flag.Bool("debug", false, "log at debug level")
-	showVersion := flag.Bool("version", false, "print the version and exit")
-	flag.Parse()
-	if *showVersion {
-		fmt.Println(version)
-		return nil
-	}
+type options struct {
+	debug   bool
+	version bool
+}
 
+// parseArgs accepts only -debug, -version and -h/-help (one or two dashes).
+// Anything else, positional arguments included, is an error: controld takes
+// no subcommands, and an unexpected word ("controld help") must never start a
+// second control plane. It returns flag.ErrHelp after printing usage for -h.
+func parseArgs(args []string, stdout, stderr io.Writer) (options, error) {
+	var o options
+	fs := flag.NewFlagSet("controld", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.BoolVar(&o.debug, "debug", false, "log at debug level")
+	fs.BoolVar(&o.version, "version", false, "print the version and exit")
+	fs.Usage = func() {
+		fmt.Fprintln(fs.Output(), "usage: controld [-debug] | -version | -help\n\ncontrold is the devbox control plane daemon; devbox-start runs it. It takes no arguments.")
+		fs.PrintDefaults()
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			fs.SetOutput(stdout)
+			fs.Usage()
+		}
+		return o, err
+	}
+	if fs.NArg() > 0 {
+		fs.Usage()
+		return o, fmt.Errorf("unexpected argument %q", fs.Arg(0))
+	}
+	return o, nil
+}
+
+func run(opts options) error {
 	lvl := slog.LevelInfo
-	if *debug {
+	if opts.debug {
 		lvl = slog.LevelDebug
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
@@ -51,6 +88,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// One controld at a time. This comes before anything that touches the
+	// sockets, the control port or the token file, and a refused start creates
+	// nothing but the (persistent, empty) lock file.
+	lock, err := acquireLock(lockPath(cfg.ControldSocket))
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+
 	envFile := filepath.Join(cfg.ConfigDir, "env")
 	token, err := loadToken(envFile)
 	if err != nil {
