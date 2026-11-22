@@ -11,6 +11,7 @@
     { "name": "notify", "kind": "pair", "devbox": true },
     { "name": "open", "kind": "pair", "devbox": true },
     { "name": "clip", "kind": "pair", "devbox": true },
-    { "name": "send", "kind": "pair", "devbox": true }
+    { "name": "send", "kind": "pair", "devbox": true },
+    { "name": "put", "kind": "pair", "devbox": true }
   ]
 }

@@ -1,0 +1,45 @@
+// put.v1: copy one file from the Mac to the box (`hq put <file> <dir>`).
+// The Mac is the caller (Sam typed the command, so there is no approval step);
+// put-vm decides where files may land: under the box user's home only, never
+// over an existing file unless forced, never through a symlink.
+syntax = "proto3";
+package put.v1;
+option go_package = "github.com/hamshoes/devbox-tools/pairs/put/gen/put/v1;putv1";
+
+// Mac → box
+service Put {
+  // Start an upload: checks the target and creates the temporary file.
+  rpc Begin(BeginRequest) returns (BeginResponse);
+  // One in-order piece of the file.
+  rpc Chunk(ChunkRequest) returns (ChunkResponse);
+  // Check size and SHA-256, then move the file into place.
+  rpc Commit(CommitRequest) returns (CommitResponse);
+  // Drop an upload and its temporary file.
+  rpc Abort(AbortRequest) returns (AbortResponse);
+}
+
+message BeginRequest {
+  string dir    = 1;  // "~", "~/x", a path relative to the home, or absolute under it; created if missing
+  string name   = 2;  // base name only
+  int64  size   = 3;  // ≤ 1 GiB
+  string sha256 = 4;  // hex, of the whole file
+  uint32 mode   = 5;  // only the executable bit is kept: 0755 or 0644
+  bool   force  = 6;  // replace an existing regular file
+}
+message BeginResponse {
+  string upload_id = 1;
+  string path      = 2;  // the final absolute path
+}
+message ChunkRequest {
+  string upload_id = 1;
+  int64  offset    = 2;  // must equal the bytes written so far
+  bytes  data      = 3;  // ≤ 512 KiB
+}
+message ChunkResponse {}
+message CommitRequest { string upload_id = 1; }
+message CommitResponse {
+  string path  = 1;
+  int64  bytes = 2;
+}
+message AbortRequest { string upload_id = 1; }
+message AbortResponse {}
