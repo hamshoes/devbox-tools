@@ -25,6 +25,9 @@ type GwCall struct {
 	Method  string          `json:"method"` // "pkg.Service/Method"
 	Payload json.RawMessage `json:"payload"`
 	Caller  *Caller         `json:"caller,omitempty"` // set by the sending gateway; older peers omit it
+	// TimeoutMs is what is left of the caller's deadline when the call is sent;
+	// the receiving gateway gives its app that long (0: callTimeout).
+	TimeoutMs int64 `json:"timeout_ms,omitempty"`
 }
 
 // Caller is the local process that made a call, from its socket's peer credentials.

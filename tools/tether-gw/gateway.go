@@ -22,6 +22,7 @@ import (
 
 const (
 	callTimeout  = 30 * time.Second
+	maxCallTime  = 10 * time.Minute // longest deadline a caller may pass, e.g. to wait for a dialog
 	helloTimeout = 10 * time.Second
 	codeMismatch = "failed_precondition"
 )
@@ -223,7 +224,11 @@ func (g *gateway) inbound(ctx context.Context, c GwCall) (json.RawMessage, *teth
 	if g.appSocket == "" {
 		return nil, tetherapp.Errorf(tetherapp.CodeUnavailable, "no app on the %s side", g.side)
 	}
-	actx, cancel := context.WithTimeout(ctx, callTimeout)
+	d := callTimeout
+	if c.TimeoutMs > 0 {
+		d = min(time.Duration(c.TimeoutMs)*time.Millisecond, maxCallTime)
+	}
+	actx, cancel := context.WithTimeout(ctx, d)
 	defer cancel()
 	var resp []byte
 	var err error
@@ -253,12 +258,15 @@ func (g *gateway) outbound(ctx context.Context, name string, body []byte, caller
 	if !g.connected() {
 		return nil, tetherapp.Errorf(tetherapp.CodeUnavailable, "not connected to the %s gateway", g.other)
 	}
-	if _, ok := ctx.Deadline(); !ok {
+	dl, ok := ctx.Deadline()
+	if !ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, callTimeout)
 		defer cancel()
+		dl, _ = ctx.Deadline()
 	}
-	r, err := tether.Call[GwCall, GwReply](ctx, g.peer, GwCall{Method: name, Payload: payload, Caller: caller})
+	call := GwCall{Method: name, Payload: payload, Caller: caller, TimeoutMs: max(time.Until(dl).Milliseconds(), 1)}
+	r, err := tether.Call[GwCall, GwReply](ctx, g.peer, call)
 	if err != nil {
 		var re *tether.RemoteError
 		switch {
