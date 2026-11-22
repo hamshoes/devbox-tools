@@ -32,7 +32,7 @@ It is a Go workspace (`go.work`) of independent modules. Each tool, pair and lib
 | Pair | Purpose |
 | --- | --- |
 | `control` | Forwards and ports control plane |
-| `desk` | Approvals: the VM asks, the Mac answers |
+| `notify` | Surfaces things to the Mac: notifications, approval dialogs for VM asks, and an approval socket for the other Mac pair apps |
 | `ping` | Link check |
 
 ### Libraries
@@ -61,7 +61,7 @@ How it works:
 
 1. `agentic run` writes a settings overlay to `~/.config/agentic/claude-settings.json` and passes it to `claude` with `--settings`. The overlay registers `PreToolUse`, `PostToolUse` and `PostToolUseFailure` hooks for the `Bash` tool; they merge with your own hooks. If the overlay can't be written, the run fails rather than starting without the gate.
 2. The pre-hook logs the command, then parses it as bash and looks for `git push`. It sees through lists, pipes, subshells, command substitutions, `sudo`/`env`/`command`/`exec`/`nohup`/`time`/`nice`, quoting tricks (`g\it`), git global options (`-C`, `-c`, ...), and nested `sh -c` / `eval` strings up to three levels deep. When it can't tell what will run (unparseable text, or a variable in command position) but `git` and `push` both appear, it asks anyway.
-3. For a push it submits an ask to the spool (`/var/lib/devbox-desk`) describing the repo, branch, remote, commits ahead, a diffstat and any force-push or branch-delete flags, then waits, for up to seven days. The `desk` pair carries the ask to the Mac and the answer back.
+3. For a push it submits an ask to the spool (`$DEVBOX_NOTIFY_SPOOL`) describing the repo, branch, remote, commits ahead, a diffstat and any force-push or branch-delete flags, then waits, for up to seven days. The `notify` pair carries the ask to the Mac and the answer back.
 4. Commands that are not pushes get no decision from the hook, so Claude Code's normal permission rules apply. The hook only ever adds restrictions.
 
 Limits:

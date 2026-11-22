@@ -1,0 +1,4 @@
+{ "pair": "notify",
+  "vm":  { "app": "notify-vm",  "calls": ["notify.v1.Notify/Notify", "notify.v1.Notify/Ask", "notify.v1.Notify/Withdraw"] },
+  "mac": { "app": "notify-mac", "calls": ["notify.v1.NotifyReplies/Answer"] },
+  "limits": { "max_message": 65536 } }

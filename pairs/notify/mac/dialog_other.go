@@ -6,10 +6,12 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
+	"os"
 	"time"
 )
 
-var testDecide = flag.String("test-decide", "", "answer every ask allow or deny after 1s instead of showing a dialog")
+var testDecide = flag.String("test-decide", "", "answer every dialog allow or deny after 1s instead of showing it")
 
 func checkFlags() error {
 	if *testDecide != "allow" && *testDecide != "deny" {
@@ -25,4 +27,9 @@ func decide(ctx context.Context, _, _ string) bool {
 	case <-ctx.Done():
 		return false
 	}
+}
+
+func showNotification(_ context.Context, title, text string) error {
+	_, err := fmt.Fprintf(os.Stderr, "notification: %s: %s\n", title, text)
+	return err
 }

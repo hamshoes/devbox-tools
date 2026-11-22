@@ -1,4 +1,5 @@
-// Command desk-vm forwards approval asks from the spool to its mac peer and writes the decisions back.
+// Command notify-vm forwards approval asks from the spool at DEVBOX_NOTIFY_SPOOL to its mac peer and
+// writes the decisions back.
 package main
 
 import (
@@ -23,8 +24,8 @@ import (
 	"syscall"
 	"time"
 
-	deskv1 "github.com/hamshoes/devbox-tools/pairs/desk/gen/desk/v1"
-	"github.com/hamshoes/devbox-tools/pairs/desk/internal/clean"
+	notifyv1 "github.com/hamshoes/devbox-tools/pairs/notify/gen/notify/v1"
+	"github.com/hamshoes/devbox-tools/pairs/notify/internal/clean"
 	"github.com/hamshoes/devbox-tools/pkg/platform"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 )
@@ -40,7 +41,7 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, "desk-vm:", err)
+		fmt.Fprintln(os.Stderr, "notify-vm:", err)
 		os.Exit(1)
 	}
 }
@@ -78,7 +79,7 @@ func run() error {
 	}
 
 	app := tetherapp.NewServer()
-	tetherapp.Handle(app, "/desk.v1.DeskReplies/Answer", d.answer)
+	tetherapp.Handle(app, "/notify.v1.NotifyReplies/Answer", d.answer)
 	errc := make(chan error, 1)
 	go func() { errc <- app.Serve(ctx, appSock) }()
 	go d.loop(ctx)
@@ -165,7 +166,7 @@ type askFile struct {
 
 // readAsk loads and validates asks/<id>.json. The requester's uid comes from the file's owner.
 // A missing file is fs.ErrNotExist; anything else wrong is an error that makes the ask invalid.
-func (d *daemon) readAsk(id string) (*deskv1.AskRequest, error) {
+func (d *daemon) readAsk(id string) (*notifyv1.AskRequest, error) {
 	f, err := os.OpenFile(d.askPath(id), os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -196,7 +197,7 @@ func (d *daemon) readAsk(id string) (*deskv1.AskRequest, error) {
 	if a.AskID != id {
 		return nil, errors.New("ask_id does not match the file name")
 	}
-	if a.Kind != "git-push" && a.Kind != "generic" {
+	if a.Kind != "git-push" && a.Kind != "git-push-env" {
 		return nil, errors.New("unknown kind")
 	}
 	title := clean.Line(a.Title, 120)
@@ -213,10 +214,10 @@ func (d *daemon) readAsk(id string) (*deskv1.AskRequest, error) {
 	} else {
 		name = "uid" + name
 	}
-	return &deskv1.AskRequest{
+	return &notifyv1.AskRequest{
 		AskId: id, Kind: a.Kind, Title: title,
 		Detail: clean.Text(a.Detail, 2000), Cwd: clean.Line(a.Cwd, 256), CreatedAt: created,
-		Requester: &deskv1.Requester{
+		Requester: &notifyv1.Requester{
 			Uid: st.Uid, User: clean.Line(name, 64), Pid: max(a.PID, 0),
 			RunId: clean.Line(a.RunID, 40), RunName: clean.Line(a.RunName, 64),
 		},
@@ -320,7 +321,7 @@ func (d *daemon) tick(ctx context.Context) {
 		clear(d.sent)
 	}
 
-	reqs := map[string]*deskv1.AskRequest{}
+	reqs := map[string]*notifyv1.AskRequest{}
 	var order []string
 	for _, id := range d.pendingIDs() {
 		req, err := d.readAsk(id)
@@ -368,15 +369,15 @@ func (d *daemon) connected(ctx context.Context) bool {
 }
 
 // send forwards every pending ask not yet sent on this connection (or sent over resendEvery ago).
-func (d *daemon) send(ctx context.Context, order []string, reqs map[string]*deskv1.AskRequest) {
+func (d *daemon) send(ctx context.Context, order []string, reqs map[string]*notifyv1.AskRequest) {
 	for _, id := range order {
 		req, ok := reqs[id]
 		if !ok || time.Since(d.sent[id]) < resendEvery {
 			continue
 		}
 		cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		var resp deskv1.AskResponse
-		err := tetherapp.Call(cctx, d.gw, "/desk.v1.Desk/Ask", req, &resp)
+		var resp notifyv1.AskResponse
+		err := tetherapp.Call(cctx, d.gw, "/notify.v1.Notify/Ask", req, &resp)
 		cancel()
 		var e *tetherapp.Error
 		switch {
@@ -400,7 +401,7 @@ func (d *daemon) send(ctx context.Context, order []string, reqs map[string]*desk
 }
 
 // handleCancels answers cancelled for each cancel file's asks, then deletes the file. It drops cancelled asks from reqs.
-func (d *daemon) handleCancels(ctx context.Context, reqs map[string]*deskv1.AskRequest, connected bool) {
+func (d *daemon) handleCancels(ctx context.Context, reqs map[string]*notifyv1.AskRequest, connected bool) {
 	ents, err := os.ReadDir(d.cancel)
 	if err != nil {
 		return
@@ -431,7 +432,7 @@ func (d *daemon) handleCancels(ctx context.Context, reqs map[string]*deskv1.AskR
 }
 
 // cancelAsk answers cancelled and tells the mac peer to drop the ask, best effort.
-func (d *daemon) cancelAsk(ctx context.Context, req *deskv1.AskRequest, reason string, connected bool) {
+func (d *daemon) cancelAsk(ctx context.Context, req *notifyv1.AskRequest, reason string, connected bool) {
 	id := req.AskId
 	ok, err := d.writeAnswer(id, "cancelled", reason)
 	if err != nil {
@@ -449,7 +450,7 @@ func (d *daemon) cancelAsk(ctx context.Context, req *deskv1.AskRequest, reason s
 	}
 	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	if err := tetherapp.Call(cctx, d.gw, "/desk.v1.Desk/Withdraw", &deskv1.WithdrawRequest{AskId: id, Reason: reason}, &deskv1.WithdrawResponse{}); err != nil {
+	if err := tetherapp.Call(cctx, d.gw, "/notify.v1.Notify/Withdraw", &notifyv1.WithdrawRequest{AskId: id, Reason: reason}, &notifyv1.WithdrawResponse{}); err != nil {
 		d.log.Warn("withdraw failed", "ask_id", id, "err", err)
 		return
 	}
@@ -480,9 +481,9 @@ func (d *daemon) cleanup() {
 	}
 }
 
-// ---- DeskReplies/Answer ----
+// ---- NotifyReplies/Answer ----
 
-func (d *daemon) answer(_ context.Context, r *deskv1.AnswerRequest) (*deskv1.AnswerResponse, error) {
+func (d *daemon) answer(_ context.Context, r *notifyv1.AnswerRequest) (*notifyv1.AnswerResponse, error) {
 	if !clean.IDPattern.MatchString(r.AskId) {
 		return nil, tetherapp.Errorf(tetherapp.CodeInvalidArgument, "bad ask_id")
 	}
@@ -495,7 +496,7 @@ func (d *daemon) answer(_ context.Context, r *deskv1.AnswerRequest) (*deskv1.Ans
 	req, err := d.readAsk(r.AskId)
 	if err != nil {
 		d.log.Debug("answer for an ask that is gone or invalid; ignored", "ask_id", r.AskId)
-		return &deskv1.AnswerResponse{}, nil
+		return &notifyv1.AnswerResponse{}, nil
 	}
 	ok, err := d.writeAnswer(r.AskId, r.Decision, clean.Line(r.Note, 200))
 	if err != nil {
@@ -504,5 +505,5 @@ func (d *daemon) answer(_ context.Context, r *deskv1.AnswerRequest) (*deskv1.Ans
 	if ok {
 		d.log.Info("ask answered", "ask_id", r.AskId, "decision", r.Decision, "user", req.Requester.User, "uid", req.Requester.Uid, "run_name", req.Requester.RunName)
 	}
-	return &deskv1.AnswerResponse{}, nil
+	return &notifyv1.AnswerResponse{}, nil
 }

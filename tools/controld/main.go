@@ -63,6 +63,18 @@ func run() error {
 	defer stop()
 
 	pr := &problems{log: log}
+	rep := newReporter(log.With("proc", "reporter"), cfg, pr)
+	pr.report = rep.enqueue
+	repCtx, stopReports := context.WithCancel(ctx)
+	repDone := make(chan struct{})
+	go func() {
+		defer close(repDone)
+		rep.run(repCtx)
+	}()
+	defer func() {
+		stopReports()
+		<-repDone
+	}()
 	svc := newServiceMgr(ctx, log.With("proc", "services"), cfg, pr)
 	svc.start()
 	defer svc.stopAll()

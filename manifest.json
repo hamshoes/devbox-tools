@@ -9,6 +9,6 @@
     { "name": "tether-gw", "devbox": true },
     { "name": "control", "kind": "pair", "devbox": true },
     { "name": "ping", "kind": "pair", "devbox": true },
-    { "name": "desk", "kind": "pair", "devbox": true }
+    { "name": "notify", "kind": "pair", "devbox": true }
   ]
 }

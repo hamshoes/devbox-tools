@@ -1,4 +1,4 @@
-module github.com/hamshoes/devbox-tools/pairs/desk
+module github.com/hamshoes/devbox-tools/pairs/notify
 
 go 1.27.1
 

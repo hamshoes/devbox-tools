@@ -5,7 +5,7 @@ use (
 	./pkg/tetherapp
 	./pkg/platform
 	./pairs/control
-	./pairs/desk
+	./pairs/notify
 	./pairs/ping
 	./tools/controld
 	./tools/agentic

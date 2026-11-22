@@ -1,0 +1,58 @@
+// notify.v1: the single "surface to Sam" pair.
+//
+// VM → Mac: Notify shows a notification (display only); Ask queues an
+// approval dialog and returns at once ("accepted", not the answer);
+// Withdraw drops an ask that is no longer wanted.
+// Mac → VM: Answer carries a decision back, asynchronously.
+//
+// The VM side (notify-vm) relays asks from the spool at DEVBOX_NOTIFY_SPOOL
+// and writes answers into it; only DEVBOX_USER can write answers. The Mac
+// side (notify-mac) shows one dialog at a time, Deny by default, with all VM
+// text passed as argv. Anything but an explicit Allow is a deny.
+//
+// notify-mac also serves the other Mac pair apps on a 0600 unix socket
+// (NOTIFY_APPROVE_SOCKET); see package approve.
+syntax = "proto3";
+package notify.v1;
+option go_package = "github.com/hamshoes/devbox-tools/pairs/notify/gen/notify/v1;notifyv1";
+
+// VM → Mac
+service Notify {
+  rpc Notify(NotifyRequest) returns (NotifyResponse);
+  rpc Ask(AskRequest) returns (AskResponse);
+  rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
+}
+
+// Mac → VM
+service NotifyReplies {
+  rpc Answer(AnswerRequest) returns (AnswerResponse);
+}
+
+message NotifyRequest {
+  string title = 1;  // ≤ 80 chars
+  string text  = 2;  // ≤ 400 chars
+}
+message NotifyResponse {}
+
+message Requester {
+  uint32 uid      = 1;  // from the ask file's OWNER (stat), not from its contents
+  string user     = 2;
+  int32  pid      = 3;  // stated by the asker; display only
+  string run_id   = 4;  // stated by the asker; display only
+  string run_name = 5;  // stated by the asker; display only
+}
+message AskRequest {
+  string ask_id       = 1;  // ^[a-z0-9]{8,40}$
+  string kind         = 2;  // "git-push" | "git-push-env"
+  string title        = 3;  // ≤ 120 chars
+  string detail       = 4;  // ≤ 2000 chars
+  string cwd          = 5;  // ≤ 256 chars
+  Requester requester = 6;
+  string created_at   = 7;
+}
+message AskResponse      { string state = 1; }  // "queued" | "showing" | "answered"
+message WithdrawRequest  { string ask_id = 1; string reason = 2; }
+message WithdrawResponse {}
+message AnswerRequest    { string ask_id = 1; string decision = 2; string note = 3; string answered_at = 4; }
+// decision: "allow" | "deny"
+message AnswerResponse   {}
