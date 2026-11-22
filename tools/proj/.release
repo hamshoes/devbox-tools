@@ -1,1 +1,1 @@
-TARGETS="linux/arm64 linux/amd64"
+TARGETS="linux/amd64"

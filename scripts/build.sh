@@ -45,7 +45,7 @@ fi
 
 tool=$name
 
-TARGETS="linux/arm64"
+TARGETS="linux/amd64"
 [ -f "tools/$tool/.release" ] && . "tools/$tool/.release"
 
 for target in $TARGETS; do
