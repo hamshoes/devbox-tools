@@ -9,6 +9,7 @@ use (
 	./pairs/open
 	./pairs/clip
 	./pairs/send
+	./pairs/put
 	./tools/controld
 	./tools/agentic
 	./tools/bigbrother

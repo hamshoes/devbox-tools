@@ -35,6 +35,7 @@ It is a Go workspace (`go.work`) of independent modules. Each tool, pair and lib
 | `open` | `bb open`: open an http(s) URL or a file on the Mac, once allowed there |
 | `clip` | `bb clip`: put stdin on the Mac clipboard, once allowed there |
 | `send` | `bb send`: save a file under `~/Downloads/box/` on the Mac, once allowed there |
+| `put` | `puthq <file> <dest>` on the Mac: save a file as `<dest>/<name>` on the VM (`~`, `~/x`, relative to `$HOME`, or absolute), never replacing one |
 
 ### Libraries
 

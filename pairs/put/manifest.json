@@ -1,0 +1,4 @@
+{ "pair": "put",
+  "vm":  { "app": "put-vm", "calls": [] },
+  "mac": { "calls": ["put.v1.Put/Put"] },
+  "limits": { "max_message": 1048576 } }

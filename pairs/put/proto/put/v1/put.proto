@@ -1,0 +1,26 @@
+// put.v1: copy a file from the Mac to the VM (`puthq <file> <dest>`), saved
+// as <dest>/<base name>, never replacing an existing file. The Mac user starts
+// every transfer, so put-vm asks for no approval.
+syntax = "proto3";
+package put.v1;
+option go_package = "github.com/hamshoes/devbox-tools/pairs/put/gen/put/v1;putv1";
+
+// Mac → VM
+service Put {
+  // One piece of a file; dest is checked on the first one.
+  rpc Put(FilePiece) returns (PutResponse);
+}
+
+message FilePiece {
+  string transfer_id = 1;  // ^[a-z0-9]{16,64}$, the same on every piece
+  string name        = 2;  // base name only
+  int64  size        = 3;  // of the whole file
+  int64  offset      = 4;
+  bytes  data        = 5;  // ≤ 512 KiB
+  bool   last        = 6;
+  string sha256      = 7;  // hex, of the whole file; on the last piece
+  string dest        = 8;  // directory on the VM: absolute, "~", "~/x" or relative to $HOME; only the first piece's counts
+}
+message PutResponse {
+  string saved_as = 1;  // the path on the VM; set after the last piece
+}
