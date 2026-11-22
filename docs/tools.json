@@ -1,0 +1,12 @@
+  {
+    "services": {
+      "status": {
+        "tool": "unwrapped",
+        "args": ["-addr", "0.0.0.0:8089"]
+      },
+      "dispatcher": {
+        "tool": "dispatcher",
+        "args": []
+      }
+    }
+  }
