@@ -5,6 +5,7 @@ use (
 	./pkg/dispatch
 	./pkg/tetherapp
 	./pairs/control
+	./pairs/desk
 	./pairs/ping
 	./tools/dispatcher
 	./tools/dispatch

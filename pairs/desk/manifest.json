@@ -1,0 +1,4 @@
+{ "pair": "desk",
+  "vm":  { "app": "desk-vm",  "calls": ["desk.v1.Desk/Ask", "desk.v1.Desk/Withdraw"] },
+  "mac": { "app": "desk-mac", "calls": ["desk.v1.DeskReplies/Answer"] },
+  "limits": { "max_message": 65536 } }
