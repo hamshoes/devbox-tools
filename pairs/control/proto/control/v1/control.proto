@@ -1,17 +1,211 @@
+// control.v1: the devbox control plane (what's needed now).
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// DEFINITION (INFRA == CONTROL)
+//   Control owns everything it runs that ISN'T a tether binary and doesn't
+//   talk to one: operations on the "physical" layer, i.e. the VM, docker,
+//   ssh forwards, and starting and running pairs.
+//   Anything that only talks to a separate running app is a PAIR, not control
+//   (clip, notify, open, approve, xcb, snap, feedback...).
+//
+//   It runs as the tether pair `control`: the VM gateway is on :4100
+//   (published on VM loopback), the Mac gateway is dialled through an ssh
+//   unix-socket forward, and the token is DISPATCH_TOKEN.
+//   Mac side = `dev`. VM side = the dispatcher.
+//
+// RULES
+//   1. The Mac is in charge. Mac → VM calls declare desired state;
+//      VM → Mac calls are requests that `dev` carries out.
+//   2. One user, full access. Being authenticated from Sam's machines is the
+//      security boundary. No roles, no policy engine. (The legacy exec
+//      allowlist goes away when the dispatch link is retired.)
+//   3. Who's asking travels with requests. tether-gw stamps the caller's
+//      SO_PEERCRED (uid, pid) on every call. For control, the dispatcher
+//      also puts the ORIGINAL requester (e.g. the `dispatch expose` process)
+//      into the request, so forwards are labelled and attributed per instance.
+//   4. Session-scoped. Everything here is released when the session ends or
+//      after 30s without the control connection.
+//   5. Additive changes only within v1. v0.1 messages and paths are frozen;
+//      new things are new methods, fields and services.
+//
+// VERSIONS
+//   A schema change changes the hash, and the gateway refuses a mismatch.
+//   `dev` matches the VM: on mismatch it reads `peer_version` from the Mac
+//   gateway's /healthz, downloads that version of the control `_mac` asset,
+//   and restarts the control gateway.
+//
+// ERRORS (Connect codes)
+//   invalid_argument     bad shape or values (port < 1024, reserved port, bad host)
+//   failed_precondition  the Mac port is in use by something else, or a static
+//                        forward can't be removed from the VM
+//   resource_exhausted   more than 32 dynamic forwards this session
+//   unavailable          the peer is down (fails fast)
+//
+// RESERVED PORTS (never exposed or auto-forwarded)
+//   4005, 4100–4199, 8085, 14005, 14006, and any static forward from config
+//
+// ROLLOUT
+//   v0.1  Control.ApplyPairs, Control.Health, ControlEvents.PairStatus,
+//         ControlEvents.Health   ← being built (G1–G3, H1–H2)
+//   v0.2  Forwards.Expose/Unexpose/ListForwards, ControlEvents.PortsChanged,
+//         tether-gw caller stamping. Retires the legacy `forward_port`.
+// ─────────────────────────────────────────────────────────────────────────────
+
 syntax = "proto3";
 package control.v1;
+
 option go_package = "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1;controlv1";
 
-message PairSpec   { string name = 1; string version = 2; uint32 vm_port = 3; string token = 4; }
-message PairResult { string name = 1; string state = 2; string error = 3; string host = 4; uint32 vm_port = 5; string version = 6; }
-// state: "started" | "failed" | "not_installed" | "mismatch"
+// ═════════════════════════════════════════════════════════════════════════════
+// Mac → VM
+// ═════════════════════════════════════════════════════════════════════════════
 
+service Control {
+  // Since: v0.1. The FULL desired set of pairs for this session: pairs
+  // missing from it are stopped. Sending the same spec again (same name,
+  // version and token) leaves a running pair untouched, so after a
+  // reconnect `dev` just sends the set again. That's the only resync needed.
+  // Never applies to `control` itself.
+  rpc ApplyPairs(ApplyPairsRequest) returns (ApplyPairsResponse);
+
+  // Since: v0.1. Liveness check, no side effects.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message PairSpec {
+  string name    = 1;  // ^[a-z0-9-]{1,32}$, never "control"
+  string version = 2;  // "latest" or "vX.Y.Z"
+  uint32 vm_port = 3;  // 4101..4199, unique within the request
+  string token   = 4;  // 32..128 hex, fresh every session
+}
+message PairResult {
+  string name    = 1;
+  string state   = 2;  // "started" | "failed" | "not_installed" | "mismatch"
+  string error   = 3;
+  string host    = 4;  // container IP the Mac forward targets
+  uint32 vm_port = 5;
+  string version = 6;  // the version actually running
+}
 message ApplyPairsRequest  { repeated PairSpec pairs = 1; }
 message ApplyPairsResponse { repeated PairResult results = 1; }
+
 message HealthRequest  {}
-message HealthResponse { string side = 1; string version = 2; string at = 3; }
+message HealthResponse {
+  string side    = 1;  // "vm" | "mac"
+  string version = 2;
+  string at      = 3;  // RFC 3339
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// VM → Mac
+// ═════════════════════════════════════════════════════════════════════════════
+
+service ControlEvents {
+  // Since: v0.1. A pair changed state outside ApplyPairs (crashed, gave up).
+  rpc PairStatus(PairStatusRequest) returns (PairStatusResponse);
+
+  // Since: v0.1. Liveness check, no side effects.
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Since: v0.2. Listening TCP sockets in the container changed.
+  // The dispatcher polls every 2s and debounces changes over 1s.
+  // With `snapshot = true`, `opened` is the complete current list and `dev`
+  // replaces what it knew. The dispatcher sends a snapshot on every
+  // (re)connect, so no List call is needed.
+  // What `dev` does is set by [control.ports] auto = "ask" | "on" | "off":
+  //   ask → notification "vite on :5173, forward?"; clicking it exposes
+  //   on  → forward straight away (source "auto"), then notify
+  //   off → ignore
+  // Auto forwards are removed when their port closes. Expose'd and config
+  // forwards stay. Reserved ports are never auto-forwarded. Loopback-only
+  // listeners can't be reached through the container IP: `dev` shows a
+  // one-time hint ("bind 0.0.0.0") instead.
+  rpc PortsChanged(PortsChangedRequest) returns (PortsChangedResponse);
+}
+
 message PairStatusRequest  { PairResult status = 1; }
 message PairStatusResponse {}
 
-service Control       { rpc ApplyPairs(ApplyPairsRequest) returns (ApplyPairsResponse); rpc Health(HealthRequest) returns (HealthResponse); }
-service ControlEvents { rpc PairStatus(PairStatusRequest) returns (PairStatusResponse); rpc Health(HealthRequest) returns (HealthResponse); }
+message PortsChangedRequest {
+  bool snapshot            = 1;
+  repeated Listener opened = 2;
+  repeated uint32 closed   = 3;  // ignored when snapshot = true
+}
+message PortsChangedResponse {}
+
+message Listener {
+  uint32 port          = 1;
+  string address       = 2;  // "0.0.0.0", "::", "127.0.0.1", ...
+  bool   loopback_only = 3;
+  int32  pid           = 4;
+  string process       = 5;  // comm, e.g. "node"
+  string cmd           = 6;  // argv, truncated to 256 chars
+}
+
+service Forwards {
+  // Since: v0.2. Replaces the legacy `forward_port` / `dispatch expose`.
+  // `dev` runs `ssh -O forward -L 127.0.0.2:<port>:<target_host>:<port>`
+  // (and the localhost equivalent) on its ControlMaster, using the same port
+  // on the Mac so devbox:<port> stays the same name.
+  // Already forwarded → returns the existing Forward (safe to repeat).
+  // The forward lasts until Unexpose or the end of the session; it survives
+  // the server restarting.
+  rpc Expose(ExposeRequest) returns (Forward);
+
+  // Since: v0.2. Removes a dynamic forward ("expose" or "auto").
+  // A config forward → failed_precondition. An unknown port → OK (no-op).
+  rpc Unexpose(UnexposeRequest) returns (UnexposeResponse);
+
+  // Since: v0.2. Every forward `dev` holds this session: config, expose and
+  // auto. Backs `dispatch ports` and `dev tether status`.
+  rpc ListForwards(ListForwardsRequest) returns (ListForwardsResponse);
+}
+
+// The process that originally asked, filled in by the dispatcher from the
+// SO_PEERCRED of its local socket (not the dispatcher itself, which is the
+// gateway's caller).
+message Requester {
+  uint32 uid = 1;
+  int32  pid = 2;
+  string cmd = 3;  // argv, truncated to 256 chars
+}
+
+message ExposeRequest {
+  uint32    port        = 1;  // container port; the Mac uses the same port
+  string    target_host = 2;  // container IP (the dispatcher knows it)
+  string    label       = 3;  // optional ("vite", "api"); shown in lists and notifications
+  Requester requester   = 4;
+}
+message UnexposeRequest  { uint32 port = 1; Requester requester = 2; }
+message UnexposeResponse {}
+
+message ListForwardsRequest  {}
+message ListForwardsResponse { repeated Forward forwards = 1; }
+
+message Forward {
+  uint32 vm_port            = 1;
+  uint32 mac_port           = 2;  // equals vm_port in v1
+  repeated string mac_addrs = 3;  // ["devbox:5173", "localhost:5173"]
+  string label              = 4;
+  string source             = 5;  // "config" | "expose" | "auto"
+  Requester requester       = 6;  // unset for config forwards
+  string created_at         = 7;
+  string state              = 8;  // "active" | "failed"
+  string error              = 9;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// manifest.json (each side enforces its own copy)
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// {
+//   "pair": "control",
+//   "mac": { "calls": [
+//     "control.v1.Control/ApplyPairs", "control.v1.Control/Health" ] },
+//   "vm":  { "calls": [
+//     "control.v1.ControlEvents/PairStatus", "control.v1.ControlEvents/Health",
+//     "control.v1.ControlEvents/PortsChanged",
+//     "control.v1.Forwards/Expose", "control.v1.Forwards/Unexpose",
+//     "control.v1.Forwards/ListForwards" ] },
+//   "limits": { "max_message": 1048576 }
+// }
