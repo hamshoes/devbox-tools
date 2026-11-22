@@ -1,0 +1,4 @@
+{ "pair": "clip",
+  "vm":  { "calls": ["clip.v1.Clip/Copy"] },
+  "mac": { "app": "clip-mac", "calls": [] },
+  "limits": { "max_message": 1048576 } }

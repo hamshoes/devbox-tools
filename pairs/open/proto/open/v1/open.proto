@@ -1,0 +1,28 @@
+// open.v1: open a URL or a file from the VM on the Mac (`bb open`).
+// open-mac asks Sam through notify's approval socket before every open;
+// a deny, a timeout or an unreachable socket opens nothing.
+syntax = "proto3";
+package open.v1;
+option go_package = "github.com/hamshoes/devbox-tools/pairs/open/gen/open/v1;openv1";
+
+// VM → Mac
+service Open {
+  // An http or https URL, opened in the default browser.
+  rpc OpenURL(OpenURLRequest) returns (OpenResponse);
+  // A file sent in pieces; approval is asked on the first one, and the file
+  // is opened with its default app once the last one is in.
+  rpc OpenFile(FilePiece) returns (OpenResponse);
+}
+
+message OpenURLRequest { string url = 1; }  // ≤ 2048 chars
+message OpenResponse   {}
+
+message FilePiece {
+  string transfer_id = 1;  // ^[a-z0-9]{16,64}$, the same on every piece
+  string name        = 2;  // base name only
+  int64  size        = 3;  // of the whole file
+  int64  offset      = 4;
+  bytes  data        = 5;  // ≤ 512 KiB
+  bool   last        = 6;
+  string sha256      = 7;  // hex, of the whole file; on the last piece
+}

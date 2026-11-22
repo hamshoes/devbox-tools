@@ -22,7 +22,7 @@ It is a Go workspace (`go.work`) of independent modules. Each tool, pair and lib
 | `scratch` | Create and manage throwaway folders |
 | `agentic` | Wrap agent runs: log every Bash command and hold each `git push` for approval on the Mac (see below) |
 | `controld` | The VM half of the control plane: runs the control gateway and the pairs the Mac asks for, watches ports, serves `bb` on a local socket |
-| `bigbrother` (`bb`) | Short-lived client for the control plane and the pairs: `bb forward`, `bb unforward`, `bb ports` |
+| `bigbrother` (`bb`) | Short-lived client for the control plane and the pairs: `forward`, `unforward`, `ports`, `svc`, `status`, `open`, `clip`, `send`, `notify` |
 | `tether-gw` | Generic gateway for one tether pair on one side: apps call it over a unix socket, and it relays checked calls to its peer gateway |
 | `tetherping` | Example of an optional tool: serves `GET /ping`; not deployed |
 | `unwrapped` | Web dashboard of the VM's status |
@@ -33,6 +33,9 @@ It is a Go workspace (`go.work`) of independent modules. Each tool, pair and lib
 | --- | --- |
 | `control` | Forwards and ports control plane |
 | `notify` | Surfaces things to the Mac: notifications, approval dialogs for VM asks, and an approval socket for the other Mac pair apps |
+| `open` | `bb open`: open an http(s) URL or a file on the Mac, once allowed there |
+| `clip` | `bb clip`: put stdin on the Mac clipboard, once allowed there |
+| `send` | `bb send`: save a file under `~/Downloads/devbox/` on the Mac, once allowed there |
 | `ping` | Link check |
 
 ### Libraries

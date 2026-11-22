@@ -1,0 +1,4 @@
+{ "pair": "send",
+  "vm":  { "calls": ["send.v1.Send/Send"] },
+  "mac": { "app": "send-mac", "calls": [] },
+  "limits": { "max_message": 1048576 } }

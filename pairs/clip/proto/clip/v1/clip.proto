@@ -1,0 +1,14 @@
+// clip.v1: put text from the VM on the Mac clipboard (`cmd | bb clip`).
+// clip-mac asks Sam through notify's approval socket first, showing the size
+// and the start of the text; a deny leaves the clipboard unchanged.
+syntax = "proto3";
+package clip.v1;
+option go_package = "github.com/hamshoes/devbox-tools/pairs/clip/gen/clip/v1;clipv1";
+
+// VM → Mac
+service Clip {
+  rpc Copy(CopyRequest) returns (CopyResponse);
+}
+
+message CopyRequest  { string text = 1; }  // UTF-8, ≤ 512 KiB
+message CopyResponse {}

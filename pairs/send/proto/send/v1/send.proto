@@ -1,0 +1,25 @@
+// send.v1: copy a file from the VM to the Mac (`bb send`), saved under
+// ~/Downloads/devbox/ by its base name, never replacing an existing file.
+// send-mac asks Sam through notify's approval socket first.
+syntax = "proto3";
+package send.v1;
+option go_package = "github.com/hamshoes/devbox-tools/pairs/send/gen/send/v1;sendv1";
+
+// VM → Mac
+service Send {
+  // One piece of a file; approval is asked on the first one.
+  rpc Send(FilePiece) returns (SendResponse);
+}
+
+message FilePiece {
+  string transfer_id = 1;  // ^[a-z0-9]{16,64}$, the same on every piece
+  string name        = 2;  // base name only
+  int64  size        = 3;  // of the whole file
+  int64  offset      = 4;
+  bytes  data        = 5;  // ≤ 512 KiB
+  bool   last        = 6;
+  string sha256      = 7;  // hex, of the whole file; on the last piece
+}
+message SendResponse {
+  string saved_as = 1;  // the path on the Mac; set after the last piece
+}

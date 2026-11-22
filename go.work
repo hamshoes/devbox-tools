@@ -6,6 +6,9 @@ use (
 	./pkg/platform
 	./pairs/control
 	./pairs/notify
+	./pairs/open
+	./pairs/clip
+	./pairs/send
 	./pairs/ping
 	./tools/controld
 	./tools/agentic

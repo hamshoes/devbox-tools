@@ -1,0 +1,4 @@
+{ "pair": "open",
+  "vm":  { "calls": ["open.v1.Open/OpenURL", "open.v1.Open/OpenFile"] },
+  "mac": { "app": "open-mac", "calls": [] },
+  "limits": { "max_message": 1048576 } }

@@ -31,6 +31,10 @@ func commands() []command {
 		{"ports", "", "list the forwards the Mac holds this session", portsCmd},
 		{"svc", "ls | enable <name> | disable <name>", "list or change the services controld runs", svcCmd},
 		{"status", "[--json]", "what controld runs and what went wrong lately", statusCmd},
+		{"open", "<url|file>", "open an http(s) URL or a file on the Mac, once allowed there", openCmd},
+		{"clip", "", "copy stdin to the Mac clipboard, once allowed there", clipCmd},
+		{"send", "<file>", "save a file to ~/Downloads/devbox/ on the Mac, once allowed there", sendCmd},
+		{"notify", "<title> [text]", "show a notification on the Mac", notifyCmd},
 	}
 }
 
