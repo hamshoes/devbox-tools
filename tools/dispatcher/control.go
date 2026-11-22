@@ -6,39 +6,24 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
 	controlv1 "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1"
 	"github.com/hamshoes/devbox-tools/pkg/dispatch"
+	"github.com/hamshoes/devbox-tools/pkg/platform"
 	"github.com/hamshoes/devbox-tools/pkg/tether"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 )
-
-const defaultControlPort = 4100
-
-// envPort reads a port override from the environment; it exists so a second dispatcher can run beside the real one.
-func envPort(name string, def int) int {
-	if p, err := strconv.Atoi(os.Getenv(name)); err == nil && p > 0 && p < 65536 {
-		return p
-	}
-	return def
-}
 
 // startControl runs the control plane next to everything else the dispatcher
 // does: a supervised control gateway, and the Control service behind it. It does
 // nothing, and says so, if tether-gw or the control pair is not installed. The
 // returned func stops everything and waits.
-func startControl(parent context.Context, log *slog.Logger, peer tether.Peer, host func() (string, error), token string) (*controlPlane, func()) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		log.Warn("control plane disabled", "err", err)
-		return nil, func() {}
-	}
-	root := filepath.Join(home, ".local/share/devtools/pairs")
-	state := filepath.Join(home, ".local/state/tether")
-	gwBin := findBin("tether-gw")
+func startControl(parent context.Context, log *slog.Logger, cfg *platform.Config, peer tether.Peer, host func() (string, error), token string) (*controlPlane, func()) {
+	root := filepath.Join(cfg.DevtoolsDir, "pairs")
+	state := cfg.TetherStateDir
+	gwBin := findBin(cfg, "tether-gw")
 	dir, err := filepath.EvalSymlinks(filepath.Join(root, "control", "current"))
 	switch {
 	case gwBin == "":
@@ -58,13 +43,13 @@ func startControl(parent context.Context, log *slog.Logger, peer tether.Peer, ho
 		log.Warn("control plane disabled", "err", err)
 		return nil, func() {}
 	}
-	controlPort := envPort("DISPATCHER_CONTROL_PORT", defaultControlPort)
+	controlPort := cfg.ControlPort
 	gwSock, appSock := filepath.Join(cdir, "gw.sock"), filepath.Join(cdir, "app.sock")
 
 	ip, _ := host()
 	ctx, cancel := context.WithCancel(parent)
 	mgr := &pairMgr{
-		log: log, peer: peer, host: ip, gwBin: gwBin, root: root, state: state,
+		log: log, cfg: cfg, peer: peer, host: ip, gwBin: gwBin, root: root, state: state,
 		control: gwSock, ctx: ctx, pairs: map[string]*runningPair{},
 	}
 
@@ -94,11 +79,11 @@ func startControl(parent context.Context, log *slog.Logger, peer tether.Peer, ho
 		}
 	})
 	wg.Go(func() { mgr.watchControl(ctx) })
-	watcher := &portWatcher{log: log.With("proc", "ports"), gwSock: gwSock, own: map[int]bool{controlPort: true, envPort("DISPATCHER_PORT", dispatch.DispatcherPort): true}}
+	watcher := &portWatcher{log: log.With("proc", "ports"), cfg: cfg, gwSock: gwSock, own: map[int]bool{dispatch.DispatcherPort: true}}
 	wg.Go(func() { watcher.run(ctx) })
 	log.Info("control plane", "port", controlPort, "pair_dir", dir, "gateway", gwBin)
 
-	return &controlPlane{gwSock: gwSock, host: host}, func() {
+	return &controlPlane{cfg: cfg, gwSock: gwSock, host: host}, func() {
 		mgr.stopAll("dispatcher shutting down")
 		cancel()
 		wg.Wait()

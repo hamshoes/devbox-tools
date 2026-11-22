@@ -8,8 +8,8 @@
 //   Anything that only talks to a separate running app is a PAIR, not control
 //   (clip, notify, open, approve, xcb, snap, feedback...).
 //
-//   It runs as the tether pair `control`: the VM gateway is on :4100
-//   (published on VM loopback), the Mac gateway is dialled through an ssh
+//   It runs as the tether pair `control`: the VM gateway is on
+//   DEVBOX_CONTROL_PORT (published on VM loopback), the Mac gateway is dialled through an ssh
 //   unix-socket forward, and the token is DISPATCH_TOKEN.
 //   Mac side = `dev`. VM side = the dispatcher.
 //
@@ -38,11 +38,11 @@
 //   invalid_argument     bad shape or values (port < 1024, reserved port, bad host)
 //   failed_precondition  the Mac port is in use by something else, or a static
 //                        forward can't be removed from the VM
-//   resource_exhausted   more than 32 dynamic forwards this session
+//   resource_exhausted   more than DEVBOX_MAX_FORWARDS dynamic forwards this session
 //   unavailable          the peer is down (fails fast)
 //
 // RESERVED PORTS (never exposed or auto-forwarded)
-//   4005, 4100–4199, 8085, 14005, 14006, and any static forward from config
+//   DEVBOX_RESERVED_PORTS, and any static forward from config
 //
 // ROLLOUT
 //   v0.1  Control.ApplyPairs, Control.Health, ControlEvents.PairStatus,
@@ -75,7 +75,7 @@ service Control {
 message PairSpec {
   string name    = 1;  // ^[a-z0-9-]{1,32}$, never "control"
   string version = 2;  // "latest" or "vX.Y.Z"
-  uint32 vm_port = 3;  // 4101..4199, unique within the request
+  uint32 vm_port = 3;  // DEVBOX_PAIR_PORT_MIN..MAX, unique within the request
   string token   = 4;  // 32..128 hex, fresh every session
 }
 message PairResult {

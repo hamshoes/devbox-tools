@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hamshoes/devbox-tools/pkg/dispatch"
+	"github.com/hamshoes/devbox-tools/pkg/platform"
 	"github.com/hamshoes/devbox-tools/pkg/tether"
 )
 
@@ -53,15 +54,19 @@ func run() error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl}))
 
-	token := loadToken()
+	cfg, err := platform.Load()
+	if err != nil {
+		return err
+	}
+	token := loadToken(cfg)
 	if token == "" {
-		return fmt.Errorf("no token: set %s in the environment or in ~/.config/devbox/env", dispatch.TokenEnv)
+		return fmt.Errorf("no token: set %s in the environment or in %s", dispatch.TokenEnv, filepath.Join(cfg.ConfigDir, "env"))
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	dispatcherPort := envPort("DISPATCHER_PORT", dispatch.DispatcherPort)
+	dispatcherPort := dispatch.DispatcherPort
 	fwd := newForwards(log)
 	router := tether.NewRouter(log)
 	tether.On(router, fwd.onReady)
@@ -95,7 +100,7 @@ func run() error {
 		return err
 	}
 	log.Info("listening", "port", dispatcherPort, "socket", sock)
-	cp, stopControl := startControl(ctx, log, peer, fwd.hostIP, token)
+	cp, stopControl := startControl(ctx, log, cfg, peer, fwd.hostIP, token)
 	defer stopControl()
 
 	go func() {
@@ -115,16 +120,12 @@ func run() error {
 	}
 }
 
-// loadToken reads the token from the environment, then from ~/.config/devbox/env.
-func loadToken() string {
+// loadToken reads the token from the environment, then from the env file in the devbox config directory.
+func loadToken(cfg *platform.Config) string {
 	if t := os.Getenv(dispatch.TokenEnv); t != "" {
 		return t
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	f, err := os.Open(filepath.Join(home, ".config/devbox/env"))
+	f, err := os.Open(filepath.Join(cfg.ConfigDir, "env"))
 	if err != nil {
 		return ""
 	}
@@ -180,7 +181,7 @@ func handle(req dispatch.Request, rq *dispatch.Requester, peer tether.Peer, fwd 
 			}
 			if !controlUnavailable(err) {
 				log.Info("request", "action", req.Action, "via", "control", "rejected", err)
-				return dispatch.Response{Error: controlMessage(err)}
+				return dispatch.Response{Error: cp.controlMessage(err)}
 			}
 		}
 		res, err := fwd.expose(a)
@@ -207,7 +208,7 @@ func handle(req dispatch.Request, rq *dispatch.Requester, peer tether.Peer, fwd 
 				return resultResponse(struct{}{})
 			}
 			if !controlUnavailable(err) {
-				return dispatch.Response{Error: controlMessage(err)}
+				return dispatch.Response{Error: cp.controlMessage(err)}
 			}
 		}
 		if err := fwd.unexpose(a); err != nil {
@@ -226,7 +227,7 @@ func handle(req dispatch.Request, rq *dispatch.Requester, peer tether.Peer, fwd 
 		}
 		list, err := cp.list(ctx)
 		if err != nil {
-			return dispatch.Response{Error: controlMessage(err)}
+			return dispatch.Response{Error: cp.controlMessage(err)}
 		}
 		return resultResponse(list)
 

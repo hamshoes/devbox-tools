@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"log/slog"
 	"net"
@@ -12,26 +11,22 @@ import (
 	"time"
 
 	controlv1 "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1"
+	"github.com/hamshoes/devbox-tools/pkg/platform"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 )
 
 const (
-	portsPoll          = 2 * time.Second
-	portsDebounce      = time.Second
-	portsSendTimeout   = 5 * time.Second
-	staticForwardsFile = "/etc/devbox/static-forwards"
-	maxCmdChars        = 256
+	portsPoll        = 2 * time.Second
+	portsDebounce    = time.Second
+	portsSendTimeout = 5 * time.Second
+	maxCmdChars      = 256
 )
-
-// reservedPort is a port that is never exposed or auto-forwarded.
-func reservedPort(p int) bool {
-	return p == 4005 || (p >= 4100 && p <= 4199) || p == 8085 || p == 14005 || p == 14006
-}
 
 // portWatcher reports the container's listening TCP ports to the Mac as
 // ControlEvents/PortsChanged.
 type portWatcher struct {
 	log    *slog.Logger
+	cfg    *platform.Config
 	gwSock string
 	own    map[int]bool // the dispatcher's own ports, if they differ from the reserved ones
 	owners ownerCache
@@ -139,11 +134,10 @@ func (w *portWatcher) scan() (map[int]*controlv1.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	static := staticPorts()
 	best := map[int]listenRow{}
 	loopbackOnly := map[int]bool{}
 	for _, r := range rows {
-		if reservedPort(r.port) || w.own[r.port] || static[r.port] {
+		if w.cfg.IsReserved(r.port) || w.own[r.port] {
 			continue
 		}
 		if _, seen := loopbackOnly[r.port]; !seen {
@@ -180,30 +174,6 @@ func rank(ip net.IP) int {
 		return 1
 	}
 	return 2
-}
-
-// staticPorts reads the ports of the static forwards, if the devbox image lists them.
-// Each field may be a bare port or host:port; '#' starts a comment.
-func staticPorts() map[int]bool {
-	f, err := os.Open(staticForwardsFile)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-	out := map[int]bool{}
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line, _, _ := strings.Cut(sc.Text(), "#")
-		for _, field := range strings.FieldsFunc(line, func(r rune) bool { return r == ' ' || r == '\t' || r == ',' }) {
-			if i := strings.LastIndexByte(field, ':'); i >= 0 {
-				field = field[i+1:]
-			}
-			if p, err := strconv.Atoi(field); err == nil && p > 0 && p < 65536 {
-				out[p] = true
-			}
-		}
-	}
-	return out
 }
 
 // ownerCache maps socket inodes to the pid that holds them, so /proc is only

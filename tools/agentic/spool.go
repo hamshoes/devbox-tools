@@ -12,10 +12,12 @@ import (
 	"syscall"
 	"text/tabwriter"
 	"time"
+
+	"github.com/hamshoes/devbox-tools/pkg/platform"
 )
 
-// The spool is shared with desk-vm (pairs/desk) by file contract only; nothing here imports the pair.
-const defaultSpool = "/var/lib/devbox-desk"
+// The spool at DEVBOX_NOTIFY_SPOOL is shared with the notify pair's VM app by file contract only;
+// nothing here imports the pair.
 
 var idPattern = regexp.MustCompile(`^[a-z0-9]{8,40}$`)
 
@@ -24,10 +26,11 @@ var errSpool = errors.New("approval system unavailable (spool missing)")
 type spool struct{ asks, answers, cancel string }
 
 func openSpool() (spool, error) {
-	base := os.Getenv("DESK_SPOOL")
-	if base == "" {
-		base = defaultSpool
+	cfg, err := platform.Load()
+	if err != nil {
+		return spool{}, fmt.Errorf("approval system unavailable: %w", err)
 	}
+	base := cfg.NotifySpool
 	s := spool{filepath.Join(base, "asks"), filepath.Join(base, "answers"), filepath.Join(base, "cancel")}
 	for _, c := range []struct {
 		dir  string

@@ -8,6 +8,7 @@ import (
 
 	controlv1 "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1"
 	"github.com/hamshoes/devbox-tools/pkg/dispatch"
+	"github.com/hamshoes/devbox-tools/pkg/platform"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 )
 
@@ -16,6 +17,7 @@ const forwardsTimeout = 15 * time.Second
 // controlPlane is the dispatcher's view of the control gateway, for the calls
 // that go to the Mac. A nil *controlPlane is a control plane that is not running.
 type controlPlane struct {
+	cfg    *platform.Config
 	gwSock string
 	host   func() (string, error) // container IP the Mac forwards to
 }
@@ -39,9 +41,9 @@ func fromRequester(r *controlv1.Requester) *dispatch.Requester {
 }
 
 // checkPort rejects ports the Mac would refuse, so the CLI can say why at once.
-func checkPort(p int) error {
+func (c *controlPlane) checkPort(p int) error {
 	switch {
-	case reservedPort(p):
+	case c.cfg.IsReserved(p):
 		return fmt.Errorf("port %d is reserved", p)
 	case p < 1024 || p > 65535:
 		return fmt.Errorf("port %d is outside 1024-65535", p)
@@ -50,7 +52,7 @@ func checkPort(p int) error {
 }
 
 func (c *controlPlane) expose(ctx context.Context, a dispatch.ExposeArgs, rq *dispatch.Requester) (dispatch.ExposeResult, error) {
-	if err := checkPort(a.Port); err != nil {
+	if err := c.checkPort(a.Port); err != nil {
 		return dispatch.ExposeResult{}, &tetherapp.Error{Code: tetherapp.CodeInvalidArgument, Message: err.Error()}
 	}
 	host, err := c.host()
@@ -72,7 +74,7 @@ func (c *controlPlane) expose(ctx context.Context, a dispatch.ExposeArgs, rq *di
 }
 
 func (c *controlPlane) unexpose(ctx context.Context, port int, rq *dispatch.Requester) error {
-	if err := checkPort(port); err != nil {
+	if err := c.checkPort(port); err != nil {
 		return &tetherapp.Error{Code: tetherapp.CodeInvalidArgument, Message: err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(ctx, forwardsTimeout)
@@ -105,7 +107,7 @@ func controlUnavailable(err error) bool {
 }
 
 // controlMessage turns a control call's error into one plain line for the CLI.
-func controlMessage(err error) string {
+func (c *controlPlane) controlMessage(err error) string {
 	var te *tetherapp.Error
 	if !errors.As(err, &te) {
 		return err.Error()
@@ -114,7 +116,7 @@ func controlMessage(err error) string {
 	case te.Code == tetherapp.CodeUnavailable:
 		return dispatch.ErrControlDown
 	case te.Code == tetherapp.CodeResourceExhausted && te.Message == "":
-		return "too many forwards (32)"
+		return fmt.Sprintf("too many forwards (%d)", c.cfg.MaxForwards)
 	case te.Message != "":
 		return te.Message
 	}

@@ -17,13 +17,12 @@ import (
 
 	controlv1 "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1"
 	"github.com/hamshoes/devbox-tools/pkg/dispatch"
+	"github.com/hamshoes/devbox-tools/pkg/platform"
 	"github.com/hamshoes/devbox-tools/pkg/tether"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 )
 
 const (
-	minPairPort    = 4101
-	maxPairPort    = 4199
 	crashLimit     = 5
 	crashWindow    = 5 * time.Minute
 	controlDownMax = 30 * time.Second
@@ -60,11 +59,12 @@ type runningPair struct {
 // pairMgr starts and stops the VM side of pairs on the control plane's say-so.
 type pairMgr struct {
 	log     *slog.Logger
+	cfg     *platform.Config
 	peer    tether.Peer // the old dispatch link, for notify
 	host    string
 	gwBin   string
 	root    string // installed pairs
-	state   string // ~/.local/state/tether
+	state   string // $DEVBOX_TETHER_STATE_DIR
 	control string // control gateway socket, for PairStatus
 	ctx     context.Context
 
@@ -92,8 +92,8 @@ func (m *pairMgr) ApplyPairs(ctx context.Context, req *controlv1.ApplyPairsReque
 			r.State, r.Error = "failed", "invalid pair name"
 		case want[s.Name]:
 			r.State, r.Error = "failed", "pair listed twice"
-		case s.VmPort < minPairPort || s.VmPort > maxPairPort:
-			r.State, r.Error = "failed", fmt.Sprintf("vm_port must be %d-%d", minPairPort, maxPairPort)
+		case int(s.VmPort) < m.cfg.PairPortMin || int(s.VmPort) > m.cfg.PairPortMax:
+			r.State, r.Error = "failed", fmt.Sprintf("vm_port must be %d-%d", m.cfg.PairPortMin, m.cfg.PairPortMax)
 		case ports[s.VmPort]:
 			r.State, r.Error = "failed", "vm_port used by another pair in the request"
 		case !pairTokenRE.MatchString(s.Token):
@@ -403,15 +403,14 @@ func gwConnected(ctx context.Context, socket string) bool {
 	return json.NewDecoder(resp.Body).Decode(&h) == nil && h.Connected
 }
 
-func findBin(name string) string {
+// findBin looks for a tool on PATH, then in the sync-owned bin directory.
+func findBin(cfg *platform.Config, name string) string {
 	if p, err := exec.LookPath(name); err == nil {
 		return p
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		p := filepath.Join(home, ".local/bin", name)
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p
-		}
+	p := filepath.Join(cfg.DevtoolsDir, "bin", name)
+	if st, err := os.Stat(p); err == nil && !st.IsDir() {
+		return p
 	}
 	return ""
 }

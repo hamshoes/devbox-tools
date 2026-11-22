@@ -4,6 +4,7 @@ use (
 	./pkg/tether
 	./pkg/dispatch
 	./pkg/tetherapp
+	./pkg/platform
 	./pairs/control
 	./pairs/desk
 	./pairs/ping

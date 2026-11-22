@@ -25,17 +25,17 @@ import (
 
 	deskv1 "github.com/hamshoes/devbox-tools/pairs/desk/gen/desk/v1"
 	"github.com/hamshoes/devbox-tools/pairs/desk/internal/clean"
+	"github.com/hamshoes/devbox-tools/pkg/platform"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 )
 
 var version = "dev"
 
 const (
-	defaultSpool = "/var/lib/devbox-desk"
-	maxAskBytes  = 8 << 10
-	tick         = time.Second
-	resendEvery  = time.Minute // the mac peer ignores duplicates; this covers an app that restarted under a live gateway
-	answerTTL    = time.Hour
+	maxAskBytes = 8 << 10
+	tick        = time.Second
+	resendEvery = time.Minute // the mac peer ignores duplicates; this covers an app that restarted under a live gateway
+	answerTTL   = time.Hour
 )
 
 func main() {
@@ -46,8 +46,6 @@ func main() {
 }
 
 func run() error {
-	owner := flag.String("spool-owner", "sam", "user that must own the spool directories")
-	group := flag.String("spool-group", "work", "group that must own the spool directories")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *showVersion {
@@ -58,16 +56,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	base := os.Getenv("DESK_SPOOL")
-	if base == "" {
-		base = defaultSpool
+	cfg, err := platform.Load()
+	if err != nil {
+		return err
 	}
+	base := cfg.NotifySpool
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	d := &daemon{
-		log: log, gw: gw, owner: *owner, group: *group,
+		log: log, gw: gw, owner: cfg.User, group: cfg.WorkGroup,
 		asks: filepath.Join(base, "asks"), answers: filepath.Join(base, "answers"), cancel: filepath.Join(base, "cancel"),
 		sent: map[string]time.Time{},
 		http: &http.Client{Timeout: time.Second, Transport: &http.Transport{
@@ -94,11 +93,11 @@ func run() error {
 }
 
 type daemon struct {
-	log                  *slog.Logger
-	gw                   string
-	owner, group         string
+	log                   *slog.Logger
+	gw                    string
+	owner, group          string
 	asks, answers, cancel string
-	http                 *http.Client
+	http                  *http.Client
 
 	mu        sync.Mutex // serialises answer writes
 	sent      map[string]time.Time
