@@ -65,7 +65,7 @@ func (m *mac) approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m.nextID++
-	it := &item{id: fmt.Sprintf("local-%d", m.nextID), title: "devbox · " + title, body: body, local: make(chan bool, 1)}
+	it := &item{id: fmt.Sprintf("local-%d", m.nextID), title: "box · " + title, body: body, local: make(chan bool, 1)}
 	m.enqueueLocked(it)
 	m.mu.Unlock()
 	m.log.Info("approval queued", "id", it.id, "title", title)

@@ -1,5 +1,5 @@
 // Command send-mac is the Mac half of the send pair: it saves files the VM
-// sends under ~/Downloads/devbox/, each only after Sam allows it in a notify
+// sends under ~/Downloads/box/, each only after Sam allows it in a notify
 // dialog, and never replaces an existing file.
 // The dialog comes from notify-mac's approval socket, NOTIFY_APPROVE_SOCKET
 // (read by package approve); without it every request is denied.
@@ -51,13 +51,13 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	s := &sender{log: log, dir: filepath.Join(home, "Downloads", "devbox")}
+	s := &sender{log: log, dir: filepath.Join(home, "Downloads", "box")}
 	s.recv = &chunk.Receiver{
 		// Inside the target folder, so finished files are linked, not copied, into place.
 		Dir: filepath.Join(s.dir, ".partial"), MaxSize: maxFileSize,
 		Approve: func(ctx context.Context, name string, size int64) (bool, error) {
 			return approve.Ask(ctx, "Save a file from the VM?",
-				fmt.Sprintf("%s (%s)\n\nSaved to ~/Downloads/devbox/", name, chunk.FormatSize(size)))
+				fmt.Sprintf("%s (%s)\n\nSaved to ~/Downloads/box/", name, chunk.FormatSize(size)))
 		},
 	}
 	app := tetherapp.NewServer()

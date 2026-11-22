@@ -2,7 +2,7 @@
 // notify-mac's approval socket, which shows a Deny-by-default dialog (one at a
 // time, queued with the VM's asks) and answers allow or deny.
 //
-// dev sets NOTIFY_APPROVE_SOCKET for every Mac pair app. The wire format is
+// The client sets NOTIFY_APPROVE_SOCKET for every Mac pair app. The wire format is
 // POST /approve with {"title","body"}, answered by {"allow"}. An unreachable
 // socket, a closed connection or an expired deadline is a deny.
 package approve

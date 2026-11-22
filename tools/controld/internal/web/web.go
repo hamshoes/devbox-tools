@@ -22,7 +22,7 @@ var indexHTML []byte
 type Source struct {
 	// Status is controld's own state: services, pairs, problems.
 	Status func(ctx context.Context) *controlv1.StatusResponse
-	// LockSHA is the sha256 of the image's devbox.lock, or "".
+	// LockSHA is the sha256 of the box's lock file, or "".
 	LockSHA func() string
 	// Sync is the platform sync's state file as it stands, or nil.
 	Sync func() json.RawMessage

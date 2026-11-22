@@ -1,4 +1,4 @@
-// Command bigbrother (alias bb) is a short-lived client for the devbox's
+// Command bigbrother (alias bb) is a short-lived client for the box's
 // control plane and tether pairs. It serves nothing and keeps no state.
 package main
 
@@ -26,14 +26,14 @@ type command struct {
 
 func commands() []command {
 	return []command{
-		{"forward", "<port> [--label L]", "forward a container port to the Mac as devbox:<port>", forwardCmd},
+		{"forward", "<port> [--label L]", "forward a container port to the Mac as <box host>:<port>", forwardCmd},
 		{"unforward", "<port>", "remove a forward made by bb forward or auto-forwarding", unforwardCmd},
 		{"ports", "", "list the forwards the Mac holds this session", portsCmd},
 		{"svc", "ls | enable <name> | disable <name>", "list or change the services controld runs", svcCmd},
 		{"status", "[--json]", "what controld runs and what went wrong lately", statusCmd},
 		{"open", "<url|file>", "open an http(s) URL or a file on the Mac, once allowed there", openCmd},
 		{"clip", "", "copy stdin to the Mac clipboard, once allowed there", clipCmd},
-		{"send", "<file>", "save a file to ~/Downloads/devbox/ on the Mac, once allowed there", sendCmd},
+		{"send", "<file>", "save a file to ~/Downloads/box/ on the Mac, once allowed there", sendCmd},
 		{"notify", "<title> [text]", "show a notification on the Mac", notifyCmd},
 	}
 }

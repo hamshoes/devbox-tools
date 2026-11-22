@@ -37,7 +37,7 @@ func showNotification(ctx context.Context, title, text string) error {
 		if text == "" {
 			text = " "
 		}
-		return exec.CommandContext(ctx, tn, "-title", esc(title), "-message", esc(text), "-group", "devbox").Run()
+		return exec.CommandContext(ctx, tn, "-title", esc(title), "-message", esc(text), "-group", "box").Run()
 	}
 	return exec.CommandContext(ctx, "osascript",
 		"-e", "on run argv",

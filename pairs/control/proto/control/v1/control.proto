@@ -1,4 +1,4 @@
-// control.v1: the devbox control plane (what's needed now).
+// control.v1: the box control plane (what's needed now).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // DEFINITION (INFRA == CONTROL)
@@ -12,11 +12,11 @@
 //   BOX_CONTROL_PORT (published on VM loopback), the Mac gateway is
 //   dialled through an ssh unix-socket forward, and the token is
 //   DISPATCH_TOKEN.
-//   Mac side = `dev`. VM side = controld.
+//   Mac side = the client. VM side = controld.
 //
 // RULES
 //   1. The Mac is in charge. Mac → VM calls declare desired state;
-//      VM → Mac calls are requests that `dev` carries out.
+//      VM → Mac calls are requests that the client carries out.
 //   2. One user, full access. Being authenticated from Sam's machines is the
 //      security boundary. No roles, no policy engine.
 //   3. Who's asking travels with requests. tether-gw stamps the caller's
@@ -31,7 +31,7 @@
 //
 // VERSIONS
 //   A schema change changes the hash, and the gateway refuses a mismatch.
-//   `dev` and the image carry the same devbox.lock, so both sides run the
+//   The client and the box carry the same lock file, so both sides run the
 //   control version it names.
 //
 // ERRORS (Connect codes)
@@ -58,7 +58,7 @@ service Control {
   // The FULL desired set of pairs for this session: pairs
   // missing from it are stopped. Sending the same spec again (same name,
   // version and token) leaves a running pair untouched, so after a
-  // reconnect `dev` just sends the set again. That's the only resync needed.
+  // reconnect the client just sends the set again. That's the only resync needed.
   // Never applies to `control` itself.
   rpc ApplyPairs(ApplyPairsRequest) returns (ApplyPairsResponse);
 
@@ -66,7 +66,7 @@ service Control {
   // release version.
   rpc Health(HealthRequest) returns (HealthResponse);
 
-  // The FULL set of services named in `dev`'s config. controld replaces its
+  // The FULL set of services named in the client's config. controld replaces its
   // config layer with it; manifest and `bb svc` services stay unless a
   // config entry names them. Services outlive the session (unlike pairs).
   rpc ApplyServices(ApplyServicesRequest) returns (ApplyServicesResponse);
@@ -132,16 +132,16 @@ service ControlEvents {
 
   // Listening TCP sockets in the container changed.
   // controld polls every 2s and debounces changes over 1s.
-  // With `snapshot = true`, `opened` is the complete current list and `dev`
+  // With `snapshot = true`, `opened` is the complete current list and the client
   // replaces what it knew. controld sends a snapshot on every
   // (re)connect, so no List call is needed.
-  // What `dev` does is set by [control.ports] auto = "ask" | "on" | "off":
+  // What the client does is set by [control.ports] auto = "ask" | "on" | "off":
   //   ask → notification "vite on :5173, forward?"; clicking it exposes
   //   on  → forward straight away (source "auto"), then notify
   //   off → ignore
   // Auto forwards are removed when their port closes. Expose'd and config
   // forwards stay. Reserved ports are never auto-forwarded. Loopback-only
-  // listeners can't be reached through the container IP: `dev` shows a
+  // listeners can't be reached through the container IP: the client shows a
   // one-time hint ("bind 0.0.0.0") instead.
   rpc PortsChanged(PortsChangedRequest) returns (PortsChangedResponse);
 }
@@ -168,9 +168,9 @@ message Listener {
 
 service Forwards {
   // Backs `bb forward`.
-  // `dev` runs `ssh -O forward -L 127.0.0.2:<port>:<target_host>:<port>`
+  // The client runs `ssh -O forward -L 127.0.0.2:<port>:<target_host>:<port>`
   // (and the localhost equivalent) on its ControlMaster, using the same port
-  // on the Mac so devbox:<port> stays the same name.
+  // on the Mac so <box host>:<port> stays the same name.
   // Already forwarded → returns the existing Forward (safe to repeat).
   // The forward lasts until Unexpose or the end of the session; it survives
   // the server restarting.
@@ -180,8 +180,8 @@ service Forwards {
   // A config forward → failed_precondition. An unknown port → OK (no-op).
   rpc Unexpose(UnexposeRequest) returns (UnexposeResponse);
 
-  // Every forward `dev` holds this session: config, expose and
-  // auto. Backs `bb ports` and `dev tether status`.
+  // Every forward the client holds this session: config, expose and
+  // auto. Backs `bb ports` and the client's `tether status`.
   rpc ListForwards(ListForwardsRequest) returns (ListForwardsResponse);
 }
 
@@ -199,8 +199,8 @@ service Local {
   rpc Unexpose(UnexposeRequest) returns (UnexposeResponse);
   rpc ListForwards(ListForwardsRequest) returns (ListForwardsResponse);
 
-  // `bb svc`. Enable/Disable of a service named in dev config fails with
-  // failed_precondition ("set in dev config").
+  // `bb svc`. Enable/Disable of a service named in the client config fails with
+  // failed_precondition ("set in the config of <client>").
   rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
   rpc EnableService(ServiceRequest) returns (ServiceStatus);
   rpc DisableService(ServiceRequest) returns (ServiceStatus);
@@ -253,7 +253,7 @@ message ListForwardsResponse { repeated Forward forwards = 1; }
 message Forward {
   uint32 vm_port            = 1;
   uint32 mac_port           = 2;  // equals vm_port in v1
-  repeated string mac_addrs = 3;  // ["devbox:5173", "localhost:5173"]
+  repeated string mac_addrs = 3;  // ["<box host>:5173", "localhost:5173"]
   string label              = 4;
   string source             = 5;  // "config" | "expose" | "auto"
   Requester requester       = 6;  // unset for config forwards

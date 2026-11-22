@@ -1,6 +1,6 @@
-// Package platform reads the devbox platform constants. The devbox repo owns
-// their values (internal/platform/platform.env, installed in the image as
-// /etc/devbox/platform.env); this package holds the names only.
+// Package platform reads the box platform constants. The image that builds the
+// box owns their values (installed as /etc/box/platform.env); this package
+// holds the names only.
 //
 // A value is taken from the process environment first, then from the file.
 // Every name must be set; Load fails with one error naming all that are missing.
@@ -19,7 +19,7 @@ import (
 )
 
 // File is where the image installs the platform constants.
-const File = "/etc/devbox/platform.env"
+const File = "/etc/box/platform.env"
 
 // Names of the platform constants.
 const (
@@ -275,4 +275,24 @@ func (p *parser) underHome(home, name string) string {
 		p.fail(name, "want a path relative to $HOME")
 	}
 	return filepath.Join(home, v)
+}
+
+// EnvClientName is how messages name the Mac client binary to the user. The box
+// sets it; it is optional, so it is not in Names and Load does not require it.
+const EnvClientName = "BOX_CLIENT_NAME"
+
+// ClientName returns how to name the client to the user: $BOX_CLIENT_NAME, then
+// its value in File, then "the client".
+func ClientName() string {
+	return clientName(os.LookupEnv, File)
+}
+
+func clientName(lookup func(string) (string, bool), file string) string {
+	if v, ok := lookup(EnvClientName); ok && v != "" {
+		return v
+	}
+	if vals, err := readFile(file); err == nil && vals[EnvClientName] != "" {
+		return vals[EnvClientName]
+	}
+	return "the client"
 }

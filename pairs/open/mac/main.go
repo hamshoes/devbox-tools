@@ -56,7 +56,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	o := &opener{log: log, dir: filepath.Join(cache, "devbox", "open")}
+	o := &opener{log: log, dir: filepath.Join(cache, "box", "open")}
 	o.recv = &chunk.Receiver{
 		Dir: filepath.Join(o.dir, ".partial"), MaxSize: maxFileSize,
 		Approve: func(ctx context.Context, name string, size int64) (bool, error) {

@@ -1,5 +1,5 @@
 scratch() {
-  [[ -r $HOME/.config/devbox/env ]] && source "$HOME/.config/devbox/env"
+  [[ -r $HOME/.config/box/env ]] && source "$HOME/.config/box/env"
   case "$1" in
     ls|clean|init|--version|-h|--help)
       command scratch "$@" ;;

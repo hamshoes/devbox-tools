@@ -8,23 +8,27 @@ import (
 	"text/tabwriter"
 
 	controlv1 "github.com/hamshoes/devbox-tools/pairs/control/gen/control/v1"
+	"github.com/hamshoes/devbox-tools/pkg/platform"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-const svcUsage = `usage: bb svc <command>
+// svcUsage is the bb svc help; it names the client from the platform.
+func svcUsage() string {
+	return `usage: bb svc <command>
   ls               list every service, its source (config, manifest, bb) and state
   enable <name>    enable a manifest tool as a service, or re-enable one
   disable <name>   stop a service and keep it stopped
-Services named in dev config are changed in dev config, not here.`
+Services named in the config of ` + platform.ClientName() + ` are changed there, not here.`
+}
 
 func svcCmd(ctx context.Context, e *env, args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(e.stderr, svcUsage)
+		fmt.Fprintln(e.stderr, svcUsage())
 		return 2
 	}
 	switch sub, rest := args[0], args[1:]; {
 	case sub == "-h" || sub == "--help" || sub == "help":
-		fmt.Fprintln(e.stdout, svcUsage)
+		fmt.Fprintln(e.stdout, svcUsage())
 		return 0
 	case sub == "ls" && len(rest) == 0:
 		var resp controlv1.ListServicesResponse
@@ -45,7 +49,7 @@ func svcCmd(ctx context.Context, e *env, args []string) int {
 		printServices(e.stdout, []*controlv1.ServiceStatus{&st})
 		return 0
 	}
-	fmt.Fprintln(e.stderr, svcUsage)
+	fmt.Fprintln(e.stderr, svcUsage())
 	return 2
 }
 

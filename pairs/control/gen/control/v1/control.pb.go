@@ -1,4 +1,4 @@
-// control.v1: the devbox control plane (what's needed now).
+// control.v1: the box control plane (what's needed now).
 //
 // ─────────────────────────────────────────────────────────────────────────────
 // DEFINITION (INFRA == CONTROL)
@@ -12,11 +12,11 @@
 //   BOX_CONTROL_PORT (published on VM loopback), the Mac gateway is
 //   dialled through an ssh unix-socket forward, and the token is
 //   DISPATCH_TOKEN.
-//   Mac side = `dev`. VM side = controld.
+//   Mac side = the client. VM side = controld.
 //
 // RULES
 //   1. The Mac is in charge. Mac → VM calls declare desired state;
-//      VM → Mac calls are requests that `dev` carries out.
+//      VM → Mac calls are requests that the client carries out.
 //   2. One user, full access. Being authenticated from Sam's machines is the
 //      security boundary. No roles, no policy engine.
 //   3. Who's asking travels with requests. tether-gw stamps the caller's
@@ -31,7 +31,7 @@
 //
 // VERSIONS
 //   A schema change changes the hash, and the gateway refuses a mismatch.
-//   `dev` and the image carry the same devbox.lock, so both sides run the
+//   The client and the box carry the same lock file, so both sides run the
 //   control version it names.
 //
 // ERRORS (Connect codes)
@@ -1553,7 +1553,7 @@ type Forward struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	VmPort        uint32                 `protobuf:"varint,1,opt,name=vm_port,json=vmPort,proto3" json:"vm_port,omitempty"`
 	MacPort       uint32                 `protobuf:"varint,2,opt,name=mac_port,json=macPort,proto3" json:"mac_port,omitempty"`   // equals vm_port in v1
-	MacAddrs      []string               `protobuf:"bytes,3,rep,name=mac_addrs,json=macAddrs,proto3" json:"mac_addrs,omitempty"` // ["devbox:5173", "localhost:5173"]
+	MacAddrs      []string               `protobuf:"bytes,3,rep,name=mac_addrs,json=macAddrs,proto3" json:"mac_addrs,omitempty"` // ["<box host>:5173", "localhost:5173"]
 	Label         string                 `protobuf:"bytes,4,opt,name=label,proto3" json:"label,omitempty"`
 	Source        string                 `protobuf:"bytes,5,opt,name=source,proto3" json:"source,omitempty"`       // "config" | "expose" | "auto"
 	Requester     *Requester             `protobuf:"bytes,6,opt,name=requester,proto3" json:"requester,omitempty"` // unset for config forwards

@@ -27,7 +27,7 @@ type controlPlane struct {
 var errNoControl = tetherapp.Errorf(tetherapp.CodeUnavailable, "control plane is not running on the VM (tether-gw or the control pair is not installed)")
 
 // errNoSession is returned when the control gateway has no Mac peer.
-var errNoSession = tetherapp.Errorf(tetherapp.CodeUnavailable, "no devbox session: the Mac is not connected")
+var errNoSession = tetherapp.Errorf(tetherapp.CodeUnavailable, "no box session: the Mac is not connected")
 
 // ready reports why calls to the Mac can't be made now, or nil.
 func (c *controlPlane) ready(ctx context.Context) error {

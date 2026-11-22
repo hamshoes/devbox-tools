@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: install.sh [--os darwin|linux] [--arch arm64|amd64] [--dir <path>] <tool> [version]
 # Install a tool's release. Defaults to this machine's OS and architecture, into
-# ~/.local/share/devtools/bin on Linux (devbox) and ~/.local/bin on macOS.
+# ~/.local/share/devtools/bin on Linux (the box) and ~/.local/bin on macOS.
 set -euo pipefail
 usage="usage: install.sh [--os darwin|linux] [--arch arm64|amd64] [--dir <path>] <tool> [version]"
 repo=hamshoes/devbox-tools

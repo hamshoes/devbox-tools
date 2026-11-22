@@ -1,5 +1,5 @@
 proj() {
-  [[ -r $HOME/.config/devbox/env ]] && source "$HOME/.config/devbox/env"
+  [[ -r $HOME/.config/box/env ]] && source "$HOME/.config/box/env"
   case "$1 $2" in
     start*|work*)
       [[ " $* " == *" -h "* || " $* " == *" --help "* ]] && { command proj "$@"; return; }

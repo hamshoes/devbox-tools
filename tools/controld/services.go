@@ -19,7 +19,7 @@ import (
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 )
 
-// Service sources, from strongest to weakest: dev config wins for the names
+// Service sources, from strongest to weakest: the client config wins for the names
 // it lists; manifest autostart and bb svc fill in the rest and persist.
 const (
 	sourceConfig   = "config"
@@ -27,7 +27,7 @@ const (
 	sourceBB       = "bb"
 )
 
-// Service states, as reported to dev and bb.
+// Service states, as reported to the client and bb.
 const (
 	stateRunning      = "running"
 	stateDisabled     = "disabled"
@@ -369,7 +369,7 @@ func (m *serviceMgr) ApplyServices(_ context.Context, req *controlv1.ApplyServic
 	return resp, nil
 }
 
-// setEnabled is bb svc enable/disable. A service dev config names can't be
+// setEnabled is bb svc enable/disable. A service the client config names can't be
 // changed here; a new one must be a manifest tool.
 func (m *serviceMgr) setEnabled(name string, enabled bool) (*controlv1.ServiceStatus, error) {
 	m.mu.Lock()
@@ -377,7 +377,7 @@ func (m *serviceMgr) setEnabled(name string, enabled bool) (*controlv1.ServiceSt
 	e, ok := m.entries[name]
 	switch {
 	case ok && e.Source == sourceConfig:
-		return nil, tetherapp.Errorf(tetherapp.CodeFailedPrecondition, "%s is set in dev config; change it there", name)
+		return nil, tetherapp.Errorf(tetherapp.CodeFailedPrecondition, "%s is set in the config of %s; change it there", name, platform.ClientName())
 	case ok:
 		e.Enabled, e.Source = enabled, sourceBB
 	case !enabled:

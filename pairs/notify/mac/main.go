@@ -275,7 +275,7 @@ func dialogText(r *notifyv1.AskRequest) (title, body string) {
 	if who == "" {
 		who = r.Requester.User
 	}
-	title = "devbox · " + who
+	title = "box · " + who
 	body = fmt.Sprintf("%s\n\n%s\n\n%s\nuid %d (%s) · pid %s",
 		r.Title, r.Detail, r.Cwd, r.Requester.Uid, r.Requester.User, strconv.Itoa(int(r.Requester.Pid)))
 	return title, body
@@ -347,7 +347,7 @@ func (m *mac) notify(ctx context.Context, r *notifyv1.NotifyRequest) (*notifyv1.
 	if !m.notes.allow() {
 		return nil, tetherapp.Errorf(tetherapp.CodeResourceExhausted, "too many notifications")
 	}
-	if err := showNotification(ctx, "devbox · "+title, text); err != nil {
+	if err := showNotification(ctx, "box · "+title, text); err != nil {
 		return nil, tetherapp.Errorf(tetherapp.CodeInternal, "show notification: %v", err)
 	}
 	return &notifyv1.NotifyResponse{}, nil

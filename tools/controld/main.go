@@ -1,4 +1,4 @@
-// Command controld is the VM half of the devbox control plane. It runs the
+// Command controld is the VM half of the box control plane. It runs the
 // control pair's gateway and service, starts and stops the other pairs the Mac
 // asks for, watches listening ports, and serves bb on a local unix socket.
 package main
@@ -60,7 +60,7 @@ func parseArgs(args []string, stdout, stderr io.Writer) (options, error) {
 	fs.BoolVar(&o.debug, "debug", false, "log at debug level")
 	fs.BoolVar(&o.version, "version", false, "print the version and exit")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "usage: controld [-debug] | -version | -help\n\ncontrold is the devbox control plane daemon; devbox-start runs it. It takes no arguments.")
+		fmt.Fprintln(fs.Output(), "usage: controld [-debug] | -version | -help\n\ncontrold is the box control plane daemon; the box start script runs it. It takes no arguments.")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {

@@ -15,6 +15,7 @@ import (
 	notifyv1 "github.com/hamshoes/devbox-tools/pairs/notify/gen/notify/v1"
 	openv1 "github.com/hamshoes/devbox-tools/pairs/open/gen/open/v1"
 	sendv1 "github.com/hamshoes/devbox-tools/pairs/send/gen/send/v1"
+	"github.com/hamshoes/devbox-tools/pkg/platform"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp/chunk"
 	"google.golang.org/protobuf/proto"
@@ -34,7 +35,7 @@ const (
 func (e *env) pairCall(ctx context.Context, pair, method string, timeout time.Duration, req, resp proto.Message) error {
 	sock := filepath.Join(e.cfg.TetherStateDir, pair, "gw.sock")
 	if !socketExists(sock) {
-		return fmt.Errorf("the %s pair is not running (no devbox session, or dev does not start it)", pair)
+		return fmt.Errorf("the %s pair is not running (no box session, or %s does not start it)", pair, platform.ClientName())
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -45,7 +46,7 @@ func (e *env) pairCall(ctx context.Context, pair, method string, timeout time.Du
 		case tetherapp.CodePermissionDenied:
 			return errors.New("denied on the Mac")
 		case tetherapp.CodeUnavailable:
-			return errors.New("no devbox session: the Mac is not connected")
+			return errors.New("no box session: the Mac is not connected")
 		case tetherapp.CodeDeadlineExceeded:
 			return errors.New("no answer in time; denied")
 		}
