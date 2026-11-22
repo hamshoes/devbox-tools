@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/hamshoes/devbox-tools/pkg/tether v0.0.0
 	github.com/hamshoes/devbox-tools/pkg/tetherapp v0.0.0
+	golang.org/x/sys v0.50.0
 	google.golang.org/protobuf v1.36.11
 )
 

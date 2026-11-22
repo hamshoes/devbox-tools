@@ -9,9 +9,14 @@ import (
 	"os"
 	"os/signal"
 
-	echov1 "github.com/hamshoes/devbox-tools/pkg/tetherapp/examples/echo/gen/echo/v1"
 	"github.com/hamshoes/devbox-tools/pkg/tetherapp"
+	echov1 "github.com/hamshoes/devbox-tools/pkg/tetherapp/examples/echo/gen/echo/v1"
 )
+
+func logCaller(ctx context.Context, who string) {
+	c, ok := tetherapp.CallerFrom(ctx)
+	fmt.Fprintf(os.Stderr, "echo %s handler: caller=%+v ok=%v\n", who, c, ok)
+}
 
 func main() {
 	side := flag.String("side", "", "vm or mac: which side this app runs on")
@@ -42,10 +47,12 @@ func main() {
 	}
 
 	s := tetherapp.NewServer()
-	tetherapp.Handle(s, "/echo.v1.EchoVM/Echo", func(_ context.Context, r *echov1.EchoRequest) (*echov1.EchoResponse, error) {
+	tetherapp.Handle(s, "/echo.v1.EchoVM/Echo", func(ctx context.Context, r *echov1.EchoRequest) (*echov1.EchoResponse, error) {
+		logCaller(ctx, "vm")
 		return &echov1.EchoResponse{Text: "vm:" + r.Text}, nil
 	})
-	tetherapp.Handle(s, "/echo.v1.EchoMac/Echo", func(_ context.Context, r *echov1.EchoRequest) (*echov1.EchoResponse, error) {
+	tetherapp.Handle(s, "/echo.v1.EchoMac/Echo", func(ctx context.Context, r *echov1.EchoRequest) (*echov1.EchoResponse, error) {
+		logCaller(ctx, "mac")
 		return &echov1.EchoResponse{Text: "mac:" + r.Text}, nil
 	})
 	if err := s.Serve(ctx, app); err != nil {

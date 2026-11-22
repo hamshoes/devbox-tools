@@ -24,6 +24,14 @@ func (HelloReply) MessageType() string { return "tether-gw.hello.reply" }
 type GwCall struct {
 	Method  string          `json:"method"` // "pkg.Service/Method"
 	Payload json.RawMessage `json:"payload"`
+	Caller  *Caller         `json:"caller,omitempty"` // set by the sending gateway; older peers omit it
+}
+
+// Caller is the local process that made a call, from its socket's peer credentials.
+type Caller struct {
+	Side string `json:"side"`
+	UID  uint32 `json:"uid"`
+	PID  int32  `json:"pid"`
 }
 
 func (GwCall) MessageType() string { return "tether-gw.call" }

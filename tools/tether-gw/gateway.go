@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -200,7 +201,7 @@ func (g *gateway) handleCall(ctx context.Context, c GwCall) (GwReply, error) {
 	if err != nil {
 		code = err.Code
 	}
-	g.log.Info("call", "method", c.Method, "dir", "in", "code", code, "dur", time.Since(start).Round(time.Millisecond))
+	g.log.Info("call", append([]any{"method", c.Method, "dir", "in", "code", code, "dur", time.Since(start).Round(time.Millisecond)}, callerAttrs(c.Caller)...)...)
 	if err != nil {
 		return GwReply{}, remoteErr(err)
 	}
@@ -224,7 +225,13 @@ func (g *gateway) inbound(ctx context.Context, c GwCall) (json.RawMessage, *teth
 	}
 	actx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
-	resp, err := tetherapp.Post(actx, g.appSocket, "/"+c.Method, payload)
+	var resp []byte
+	var err error
+	if c.Caller != nil {
+		resp, err = tetherapp.PostAs(actx, g.appSocket, "/"+c.Method, payload, tetherapp.Caller{Side: c.Caller.Side, UID: c.Caller.UID, PID: c.Caller.PID})
+	} else {
+		resp, err = tetherapp.Post(actx, g.appSocket, "/"+c.Method, payload)
+	}
 	if err != nil {
 		var te *tetherapp.Error
 		errors.As(err, &te)
@@ -234,7 +241,7 @@ func (g *gateway) inbound(ctx context.Context, c GwCall) (json.RawMessage, *teth
 }
 
 // outbound is the app-facing path.
-func (g *gateway) outbound(ctx context.Context, name string, body []byte) ([]byte, *tetherapp.Error) {
+func (g *gateway) outbound(ctx context.Context, name string, body []byte, caller *Caller) ([]byte, *tetherapp.Error) {
 	if g.sc.calls[name] != g.side {
 		return nil, tetherapp.Errorf(tetherapp.CodePermissionDenied, "%s is not a method the %s side may call", name, g.side)
 	}
@@ -251,7 +258,7 @@ func (g *gateway) outbound(ctx context.Context, name string, body []byte) ([]byt
 		ctx, cancel = context.WithTimeout(ctx, callTimeout)
 		defer cancel()
 	}
-	r, err := tether.Call[GwCall, GwReply](ctx, g.peer, GwCall{Method: name, Payload: payload})
+	r, err := tether.Call[GwCall, GwReply](ctx, g.peer, GwCall{Method: name, Payload: payload, Caller: caller})
 	if err != nil {
 		var re *tether.RemoteError
 		switch {
@@ -287,7 +294,13 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	start := time.Now()
 	name := strings.TrimPrefix(r.URL.Path, "/")
-	out, err := g.app(w, r, name)
+	// Only gateways set caller headers; nothing from the app is forwarded, but drop them anyway.
+	tetherapp.StripCaller(r.Header)
+	var caller *Caller
+	if cc, ok := r.Context().Value(callerCtxKey{}).(Caller); ok {
+		caller = &cc
+	}
+	out, err := g.app(w, r, name, caller)
 	code := "ok"
 	if err != nil {
 		code = err.Code
@@ -296,10 +309,27 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(out)
 	}
-	g.log.Info("call", "method", name, "dir", "out", "code", code, "dur", time.Since(start).Round(time.Millisecond))
+	g.log.Info("call", append([]any{"method", name, "dir", "out", "code", code, "dur", time.Since(start).Round(time.Millisecond)}, callerAttrs(caller)...)...)
 }
 
-func (g *gateway) app(w http.ResponseWriter, r *http.Request, name string) ([]byte, *tetherapp.Error) {
+type callerCtxKey struct{}
+
+// connContext records the peer credentials of each accepted gw-socket connection.
+func (g *gateway) connContext(ctx context.Context, c net.Conn) context.Context {
+	if uid, pid, ok := peerCred(c); ok {
+		return context.WithValue(ctx, callerCtxKey{}, Caller{Side: g.side, UID: uid, PID: pid})
+	}
+	return ctx
+}
+
+func callerAttrs(c *Caller) []any {
+	if c == nil {
+		return nil
+	}
+	return []any{"caller_uid", c.UID, "caller_pid", c.PID}
+}
+
+func (g *gateway) app(w http.ResponseWriter, r *http.Request, name string, caller *Caller) ([]byte, *tetherapp.Error) {
 	if r.Method != http.MethodPost {
 		return nil, tetherapp.Errorf(tetherapp.CodeUnimplemented, "use POST")
 	}
@@ -321,5 +351,5 @@ func (g *gateway) app(w http.ResponseWriter, r *http.Request, name string) ([]by
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(ms)*time.Millisecond)
 		defer cancel()
 	}
-	return g.outbound(ctx, name, body)
+	return g.outbound(ctx, name, body, caller)
 }

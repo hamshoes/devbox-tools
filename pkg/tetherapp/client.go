@@ -45,12 +45,25 @@ func unixClient(socket string) *http.Client {
 // unix socket and returns the response body. A deadline on ctx travels as
 // Connect-Timeout-Ms. Every failure is an *Error.
 func Post(ctx context.Context, socket, method string, body []byte) ([]byte, error) {
+	return post(ctx, socket, method, body, nil)
+}
+
+// PostAs is Post with the Tether-Caller-* headers set to c. Gateways use it for
+// inbound calls; an app's own calls never carry them.
+func PostAs(ctx context.Context, socket, method string, body []byte, c Caller) ([]byte, error) {
+	return post(ctx, socket, method, body, &c)
+}
+
+func post(ctx context.Context, socket, method string, body []byte, c *Caller) ([]byte, error) {
 	method = normalize(method)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://tether"+method, bytes.NewReader(body))
 	if err != nil {
 		return nil, Errorf(CodeInvalidArgument, "%v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c != nil {
+		SetCaller(req.Header, *c)
+	}
 	if dl, ok := ctx.Deadline(); ok {
 		req.Header.Set("Connect-Timeout-Ms", strconv.FormatInt(max(time.Until(dl).Milliseconds(), 1), 10))
 	}

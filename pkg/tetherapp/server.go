@@ -55,6 +55,9 @@ func Handle[Req, Resp proto.Message](s *Server, method string, fn func(ctx conte
 		}
 		ctx, cancel := requestContext(r)
 		defer cancel()
+		if c, ok := callerFromHeader(r.Header); ok {
+			ctx = context.WithValue(ctx, callerKey{}, c)
+		}
 		resp, err := fn(ctx, req)
 		if err != nil {
 			var e *Error
