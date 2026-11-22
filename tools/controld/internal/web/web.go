@@ -1,4 +1,4 @@
-// Package web serves controld's page on DEVBOX_WEB_PORT: the status page at
+// Package web serves controld's page on BOX_WEB_PORT: the status page at
 // /, /ping, and a read-only JSON API. Changes go through bb, never here.
 package web
 

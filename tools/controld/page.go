@@ -19,7 +19,7 @@ import (
 	"github.com/hamshoes/devbox-tools/tools/controld/internal/web"
 )
 
-// servePage serves the status page on 0.0.0.0:DEVBOX_WEB_PORT until ctx ends.
+// servePage serves the status page on 0.0.0.0:BOX_WEB_PORT until ctx ends.
 // A port that can't be bound is a problem, not a reason to stop controld.
 func servePage(ctx context.Context, log *slog.Logger, cfg *platform.Config, pr *problems, status func(context.Context) *controlv1.StatusResponse) {
 	home, err := os.UserHomeDir()

@@ -1,4 +1,4 @@
-// Command notify-vm forwards approval asks from the spool at DEVBOX_NOTIFY_SPOOL to its mac peer and
+// Command notify-vm forwards approval asks from the spool at BOX_NOTIFY_SPOOL to its mac peer and
 // writes the decisions back.
 package main
 

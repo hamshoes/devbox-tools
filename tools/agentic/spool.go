@@ -17,7 +17,7 @@ import (
 	"github.com/hamshoes/devbox-tools/pkg/platform"
 )
 
-// The spool at DEVBOX_NOTIFY_SPOOL is shared with the notify pair's VM app by file contract only;
+// The spool at BOX_NOTIFY_SPOOL is shared with the notify pair's VM app by file contract only;
 // nothing here imports the pair.
 
 var idPattern = regexp.MustCompile(`^[a-z0-9]{8,40}$`)

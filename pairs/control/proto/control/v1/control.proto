@@ -9,7 +9,7 @@
 //   (clip, notify, open, approve, xcb, snap, feedback...).
 //
 //   It runs as the tether pair `control`: the VM gateway is on
-//   DEVBOX_CONTROL_PORT (published on VM loopback), the Mac gateway is
+//   BOX_CONTROL_PORT (published on VM loopback), the Mac gateway is
 //   dialled through an ssh unix-socket forward, and the token is
 //   DISPATCH_TOKEN.
 //   Mac side = `dev`. VM side = controld.
@@ -38,11 +38,11 @@
 //   invalid_argument     bad shape or values (port < 1024, reserved port, bad host)
 //   failed_precondition  the Mac port is in use by something else, or a static
 //                        forward can't be removed from the VM
-//   resource_exhausted   more than DEVBOX_MAX_FORWARDS dynamic forwards this session
+//   resource_exhausted   more than BOX_MAX_FORWARDS dynamic forwards this session
 //   unavailable          the peer is down (fails fast)
 //
 // RESERVED PORTS (never exposed or auto-forwarded)
-//   DEVBOX_RESERVED_PORTS, and any static forward from config
+//   BOX_RESERVED_PORTS, and any static forward from config
 // ─────────────────────────────────────────────────────────────────────────────
 
 syntax = "proto3";
@@ -75,7 +75,7 @@ service Control {
 message PairSpec {
   string name    = 1;  // ^[a-z0-9-]{1,32}$, never "control"
   string version = 2;  // "latest" or "vX.Y.Z"
-  uint32 vm_port = 3;  // DEVBOX_PAIR_PORT_MIN..MAX, unique within the request
+  uint32 vm_port = 3;  // BOX_PAIR_PORT_MIN..MAX, unique within the request
   string token   = 4;  // 32..128 hex, fresh every session
 }
 message PairResult {
@@ -186,7 +186,7 @@ service Forwards {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Local: controld's own unix socket (DEVBOX_CONTROLD_SOCKET), for `bb`
+// Local: controld's own unix socket (BOX_CONTROLD_SOCKET), for `bb`
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // Never listed in manifest.json, so the gateways never carry it. controld

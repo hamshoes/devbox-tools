@@ -62,7 +62,7 @@ type pairMgr struct {
 	host     string
 	gwBin    string
 	root     string // installed pairs
-	state    string // $DEVBOX_TETHER_STATE_DIR
+	state    string // $BOX_TETHER_STATE_DIR
 	control  string // control gateway socket, for PairStatus
 	problems *problems
 	ctx      context.Context

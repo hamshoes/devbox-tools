@@ -5,8 +5,8 @@
 // Withdraw drops an ask that is no longer wanted.
 // Mac → VM: Answer carries a decision back, asynchronously.
 //
-// The VM side (notify-vm) relays asks from the spool at DEVBOX_NOTIFY_SPOOL
-// and writes answers into it; only DEVBOX_USER can write answers. The Mac
+// The VM side (notify-vm) relays asks from the spool at BOX_NOTIFY_SPOOL
+// and writes answers into it; only BOX_USER can write answers. The Mac
 // side (notify-mac) shows one dialog at a time, Deny by default, with all VM
 // text passed as argv. Anything but an explicit Allow is a deny.
 //

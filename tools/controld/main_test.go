@@ -82,12 +82,15 @@ func TestSecondInstanceTouchesNothing(t *testing.T) {
 	}
 	env := append(os.Environ(),
 		"HOME="+home,
-		"DEVBOX_CONFIG_DIR=cfg", "DEVBOX_DEVTOOLS_DIR=tools", "DEVBOX_STATE_DIR=state",
-		"DEVBOX_TETHER_STATE_DIR=tether", "DEVBOX_CONTROLD_SOCKET=state/controld.sock",
+		"BOX_CONFIG_DIR=cfg", "BOX_DEVTOOLS_DIR=tools", "BOX_STATE_DIR=state",
+		"BOX_TETHER_STATE_DIR=tether", "BOX_CONTROLD_SOCKET=state/controld.sock",
 		"DISPATCH_TOKEN=test-token",
 		// Away from the live ports, in case a regression lets it start.
-		"DEVBOX_CONTROL_PORT=47100", "DEVBOX_PAIR_PORT_MIN=47101", "DEVBOX_PAIR_PORT_MAX=47199",
-		"DEVBOX_WEB_PORT=47080", "DEVBOX_RESERVED_PORTS=47100-47199 47080", "DEVBOX_PAIR_PORTS=",
+		"BOX_CONTROL_PORT=47100", "BOX_PAIR_PORT_MIN=47101", "BOX_PAIR_PORT_MAX=47199",
+		"BOX_WEB_PORT=47080", "BOX_RESERVED_PORTS=47100-47199 47080", "BOX_PAIR_PORTS=control=47101",
+		// The rest, so the test never depends on the host's platform file.
+		"BOX_SSH_PORT=47022", "BOX_MAX_FORWARDS=8", "BOX_USER=test", "BOX_WORK_GROUP=test",
+		"BOX_WORK_GID=4242", "BOX_NOTIFY_SPOOL="+filepath.Join(home, "spool"), "BOX_LOCK_FILE="+filepath.Join(home, "box.lock"),
 	)
 	sock := filepath.Join(home, "state", "controld.sock")
 	held, err := acquireLock(lockPath(sock))
