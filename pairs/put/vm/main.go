@@ -118,7 +118,9 @@ func (p *putter) put(ctx context.Context, r *putv1.FilePiece) (*putv1.PutRespons
 		return nil, tetherapp.Errorf(tetherapp.CodeFailedPrecondition, "no destination for this transfer")
 	}
 	// The partial file is 0600; a put file should look like any other new file.
-	os.Chmod(done.Path, 0o644)
+	if err := os.Chmod(done.Path, 0o644); err != nil {
+		p.log.Warn("chmod partial file", "path", done.Path, "err", err)
+	}
 	path, err := keep(done.Path, dir, done.Name)
 	if err != nil {
 		os.Remove(done.Path)
@@ -213,15 +215,25 @@ func keepWith(keepFn func(tmp, dir, name string) (string, error), tmp, dir, name
 	return path, nil
 }
 
-// copyInto copies src to a new hidden temporary file in dir and returns its path.
+// copyInto copies src to a new hidden temporary file in dir, with src's
+// permissions (CreateTemp makes it 0600), and returns its path.
 func copyInto(src, dir string) (string, error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return "", err
 	}
 	defer in.Close()
+	fi, err := in.Stat()
+	if err != nil {
+		return "", err
+	}
 	out, err := os.CreateTemp(dir, ".put-*")
 	if err != nil {
+		return "", err
+	}
+	if err := out.Chmod(fi.Mode().Perm()); err != nil {
+		out.Close()
+		os.Remove(out.Name())
 		return "", err
 	}
 	if _, err := io.Copy(out, in); err != nil {

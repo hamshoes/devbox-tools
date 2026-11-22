@@ -69,6 +69,7 @@ func TestKeepCrossDevice(t *testing.T) {
 	src, dest := t.TempDir(), t.TempDir()
 	tmp := filepath.Join(src, ".part-1")
 	must(t, os.WriteFile(tmp, []byte("hello"), 0o600))
+	must(t, os.Chmod(tmp, 0o644)) // as put does before keep
 	must(t, os.WriteFile(filepath.Join(dest, "f.txt"), []byte("old"), 0o644))
 
 	// Fail like a cross-device link whenever tmp is outside dest.
@@ -92,6 +93,9 @@ func TestKeepCrossDevice(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(path); string(b) != "hello" {
 		t.Errorf("content = %q", b)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Errorf("copied file mode = %v, %v; want 0644", fi.Mode().Perm(), err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(dest, "f.txt")); string(b) != "old" {
 		t.Errorf("existing file changed: %q", b)
