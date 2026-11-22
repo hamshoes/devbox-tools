@@ -3,7 +3,6 @@ module github.com/hamshoes/devbox-tools/tools/dispatcher
 go 1.27.1
 
 require (
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )

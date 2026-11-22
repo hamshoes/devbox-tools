@@ -6,8 +6,6 @@
     { "name": "dispatcher", "devbox": true },
     { "name": "dispatch", "devbox": true },
     { "name": "agentic", "devbox": true },
-    { "name": "tetherping", "devbox": true },
-    { "name": "tetherlog", "devbox": false },
     { "name": "tether-gw", "devbox": true, "mac": true },
     { "name": "control", "kind": "pair", "devbox": true, "mac": true },
     { "name": "ping", "kind": "pair", "devbox": true, "mac": true },

@@ -24,7 +24,7 @@ It is a Go workspace (`go.work`) of independent modules. Each tool, pair and lib
 | `dispatcher` | Push exec events to the Mac over a tether server, fed by `dispatch` over a unix socket |
 | `dispatch` | Ask the local dispatcher to run an action on the Mac; invoked as `xdg-open`, it opens a URL there |
 | `tether-gw` | Generic gateway for one tether pair on one side: apps call it over a unix socket, and it relays checked calls to its peer gateway |
-| `tetherping`, `tetherlog` | Test server and log viewer for a tether link |
+| `tetherping` | Example of an optional tool: serves `GET /ping`; not deployed |
 | `unwrapped` | Web dashboard of the VM's status |
 
 ### Pairs

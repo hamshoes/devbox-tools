@@ -1,6 +1,0 @@
-{
-  "pair": "echo",
-  "vm":  { "calls": ["echo.v1.EchoMac/Echo"] },
-  "mac": { "calls": ["echo.v1.EchoVM/Echo"] },
-  "limits": { "max_message": 1048576 }
-}
